@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SprintGuard - Predictive Sprint Planning</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="container">
+            <h1>🛡️ SprintGuard</h1>
+            <p class="subtitle">Predictive Sprint Planning & Risk Mitigation Platform</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Data Health Check Section -->
+        <section class="feature-section" id="health-check-section">
+            <div class="section-header">
+                <h2>📊 Data Health Check</h2>
+                <p>Assess the quality of your historical data for reliable predictions</p>
+            </div>
+            
+            <button class="btn btn-primary" onclick="HealthCheck.run()">
+                Run Health Check
+            </button>
+            
+            <div id="health-check-result" class="result-container" style="display: none;">
+                <!-- Health check results will be injected here -->
+            </div>
+        </section>
+
+        <!-- Probabilistic Story Assessor Section -->
+        <section class="feature-section" id="psa-section">
+            <div class="section-header">
+                <h2>🎯 Probabilistic Story Assessor</h2>
+                <p>Assess the risk and volatility of a user story based on historical patterns</p>
+            </div>
+            
+            <div class="input-group">
+                <label for="story-description">User Story Description:</label>
+                <textarea 
+                    id="story-description" 
+                    rows="4" 
+                    placeholder="e.g., Implement OAuth2 authentication for the REST API endpoint..."
+                ></textarea>
+            </div>
+            
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="RiskAssessor.assess()">
+                    Assess Risk
+                </button>
+                <button class="btn btn-secondary" onclick="RiskAssessor.fillExample()">
+                    Try Example
+                </button>
+            </div>
+            
+            <div id="risk-result" class="result-container" style="display: none;">
+                <!-- Risk assessment results will be injected here -->
+            </div>
+        </section>
+
+        <!-- Scope Impact Simulator Section -->
+        <section class="feature-section" id="sis-section">
+            <div class="section-header">
+                <h2>⚡ Scope Impact Simulator</h2>
+                <p>Visualize the timeline impact of adding new work to your sprint</p>
+            </div>
+            
+            <div class="form-grid">
+                <div class="input-group">
+                    <label for="current-end-date">Current Sprint End Date:</label>
+                    <input type="date" id="current-end-date" required>
+                </div>
+                
+                <div class="input-group">
+                    <label for="current-points">Current Story Points:</label>
+                    <input type="number" id="current-points" value="20" min="0" required>
+                </div>
+                
+                <div class="input-group">
+                    <label for="new-points">New Story Points to Add:</label>
+                    <input type="number" id="new-points" value="5" min="1" required>
+                </div>
+                
+                <div class="input-group">
+                    <label for="team-velocity">Team Velocity (points/day):</label>
+                    <input type="number" id="team-velocity" value="2.0" step="0.1" min="0.1" required>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" onclick="ScopeSimulator.simulate()">
+                Simulate Impact
+            </button>
+            
+            <div id="scope-result" class="result-container" style="display: none;">
+                <!-- Simulation results will be injected here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>SprintGuard PoC v1.0 | Built to mitigate estimation failure and scope creep</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
