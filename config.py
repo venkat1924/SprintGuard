@@ -3,10 +3,14 @@ import os
 
 # Base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 
-# Database configuration
-DATABASE_PATH = os.path.join(BASE_DIR, 'data', 'sprintguard.db')
-SEED_DATA_PATH = os.path.join(BASE_DIR, 'data', 'seed_stories.json')
+# Database configuration (optional - for future user annotations)
+DATABASE_PATH = os.path.join(DATA_DIR, 'sprintguard.db')
+
+# NeoDataset paths (primary data source)
+NEODATASET_PATH = os.path.join(DATA_DIR, 'neodataset_augmented.csv')
+NEODATASET_HIGH_CONF_PATH = os.path.join(DATA_DIR, 'neodataset_augmented_high_confidence.csv')
 
 # Flask configuration
 DEBUG = True
@@ -17,18 +21,4 @@ PORT = 5001
 HEALTH_CHECK_MIN_STORIES = 100
 HEALTH_CHECK_MIN_DESCRIPTION_LENGTH = 5
 HEALTH_CHECK_IDEAL_DESCRIPTION_LENGTH = 15
-
-# Risk Assessment keywords
-HIGH_RISK_KEYWORDS = [
-    'api', 'integration', 'migrate', 'migration', 'database', 'db',
-    'third-party', 'legacy', 'security', 'authentication', 'auth',
-    'performance', 'refactor', 'refactoring', 'architecture',
-    'infrastructure', 'deploy', 'deployment', 'scale', 'scaling'
-]
-
-MEDIUM_RISK_KEYWORDS = [
-    'implement', 'create', 'build', 'develop', 'feature',
-    'backend', 'frontend', 'service', 'component', 'module',
-    'test', 'testing', 'validation', 'error', 'bug'
-]
 

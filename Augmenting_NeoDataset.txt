@@ -1,0 +1,295 @@
+Probabilistic Risk Assessment in Agile Requirements: A Weak Supervision Architecture for Unlabeled Artifacts
+
+
+
+
+1. The Crisis of Predictability in Agile Software Delivery
+
+
+The transition of the software engineering industry from Waterfall methodologies to Agile frameworks—most notably Scrum and Kanban—has fundamentally altered the landscape of project management. While this shift has successfully prioritized adaptability and customer collaboration, it has simultaneously introduced a crisis of predictability. In the absence of rigid, up-front specifications, the "User Story" has emerged as the atomic unit of work: a semi-structured, natural language description of a desired feature. However, these artifacts are notoriously volatile. Empirical studies consistently demonstrate that a significant percentage of user stories fail to complete within their assigned iterations (spillover), expand uncontrollably in scope (creep), or require effort magnitudes greater than initially estimated.1
+This unpredictability is not merely a nuisance; it is a systemic risk that threatens the viability of software projects. When estimation accuracy degrades, trust between engineering teams and stakeholders erodes, leading to the "planning fallacy"—a cognitive bias where teams systematically underestimate the time, costs, and risks of future actions and at the same time overestimate the benefits of the same actions.3 The objective of modern predictive analytics in this domain is to identify these risks ex ante, flagging user stories that exhibit the latent characteristics of failure before they enter a sprint.
+The challenge, however, lies in the data. While repositories like GitLab and GitHub teem with millions of user stories, this data is largely unlabeled regarding "risk." There is no metadata field in a standard issue tracker that explicitly categorizes a story as "High Risk" or "Likely to Spill Over." Risk is a retrospective realization, often buried in comment threads, commit timestamps, or the silence of abandoned tasks. This report addresses the specific engineering challenge of the "NeoDataset"—a corpus of over 20,000 unlabeled user stories—and proposes a scientifically rigorous architecture to synthesize training labels using Weak Supervision. By leveraging the paradigms of Data Programming (Snorkel) and Confident Learning (Cleanlab), we can programmatically encode domain expertise into the label generation process, transforming raw text into a predictive asset without the prohibitive cost of manual annotation.
+
+
+1.1 The Latent Variable Problem in Agile Artifacts
+
+
+In machine learning terms, "Risk" in Agile user stories is a latent variable. It is not directly observable in the raw state of the data but must be inferred from a constellation of observable features. The NeoDataset 5 provides the observable features: the natural language title and description, the quantitative story_points (or weight), and the project context. However, the target variable $Y$—whether that story caused disruption—is missing.
+Traditional approaches to this problem have relied on "Proxy Tasks," such as predicting the story point value itself.6 The logic posits that if a model can predict that a story is "large" (e.g., 13 points), it is implicitly predicting it is "risky." However, this conflates size with risk. A 13-point story might be large but well-understood and executed perfectly. Conversely, a 2-point story might contain a "linguistic smell" or a hidden dependency that causes it to block the sprint for weeks.3 Therefore, a robust risk prediction model must treat Risk as distinct from Effort.
+The absence of ground truth labels ($Y$) forces us to move beyond standard Supervised Learning. Unsupervised learning, such as clustering, can identify anomalies 8, but it lacks the semantic direction to categorize those anomalies specifically as "project risks" versus merely "unusual topics." Weak Supervision serves as the bridge. It allows us to inject heuristics—rules of thumb derived from empirical software engineering research—to generate noisy labels, which are then statistically de-noised to create a training set. This report details the theoretical and practical construction of such a system.
+________________
+
+
+2. The NeoDataset: A Forensic Analysis of the Substrate
+
+
+To engineer effective labeling functions, one must first possess a nuanced understanding of the data substrate. The NeoDataset, introduced by Neo et al. 5, represents one of the most significant public contributions to the domain of Agile estimation datasets. Mined from GitLab, it diverges from previous datasets (like the PROMISE dataset) by focusing on modern, open-source Agile projects that actively use the "Weight" attribute for story points.
+
+
+2.1 Provenance and Filtering Mechanisms
+
+
+The dataset comprises approximately 20,479 user stories extracted from 33 to 34 diverse software projects.5 The mining process, executed between January and April 2023, employed a rigorous filtering mechanism that bears directly on our risk modeling strategy. Specifically, the authors selected only tasks where the State attribute was set to "Closed" and the Weight attribute was non-null.9
+This "Survivor Bias" in the dataset is critical to acknowledge. By including only closed stories, the dataset excludes tasks that were so risky they were abandoned or remain in a perpetual state of limbo. However, this constraint also ensures that every data point represents completed work, meaning the story_points value (the weight) is likely the final estimate accepted by the team.
+The dataset includes the following schema, which will serve as the inputs for our Weak Supervision pipeline:
+* Issue Key: A unique identifier, essential for tracking dependencies (though the dataset documentation does not explicitly state that dependency links are preserved in a structured format, they are often found in the text).
+* Title: A concise summary, typically exhibiting specific linguistic patterns (e.g., "As a user, I want...").
+* Description: The payload of the user story. This field contains the acceptance criteria, technical notes, and occasionally snippets of conversation or code.
+* Story Points: The team's estimation of effort.
+* Project ID: Allowing for project-specific normalization of data.
+
+
+2.2 The "User Story Tutor" Context
+
+
+It is relevant to note that the NeoDataset was originally curated to support the "User Story Tutor" (UST), a pedagogical tool designed to train software engineers in writing better requirements and estimating effort.10 The UST uses machine learning to predict story points and recommend improvements for readability.
+While the UST focuses on estimation and education, our objective is risk prediction. The UST validates the utility of this data for NLP tasks—demonstrating that machine learning models (specifically FastText and LSTM) can extract semantic meaning from these descriptions.6 However, the UST does not attempt to classify stories as "risky" or "ambiguous" in a binary sense; it focuses on the regression task of point prediction. Our work extends this prior art by pivoting the target variable from Effort (a continuous or ordinal variable) to Risk (a probabilistic class), using the UST's underlying data as the raw material.
+________________
+
+
+3. The Phenomenology of Risk: A Taxonomy of Correlates
+
+
+To generate labels programmatically, we must operationalize the concept of "Risk." We cannot simply ask the model to "find risk"; we must define risk in terms of detectable patterns. A synthesis of the provided research snippets and broader software engineering literature reveals three primary dimensions of user story risk: Linguistic Ambiguity, Cognitive Complexity, and Structural Deficit.
+
+
+3.1 Linguistic Ambiguity: The "Nocuous" Signals
+
+
+Ambiguity is the root cause of requirements failure. When a requirement can be interpreted in multiple ways, it leads to "cognitive divergence" between the stakeholder and the developer. Research distinguishes between "innocuous ambiguity" (which is resolved easily by context) and "nocuous ambiguity" (which leads to errors).12
+The ISO/IEC/IEEE 29148:2018 standard for Systems and Software Engineering explicitly codifies the linguistic patterns that introduce nocuous ambiguity.13 These "weak words" are statistically correlated with project failure because they mask the true scope of work.
+
+
+Table 1: Taxonomy of Linguistic Risk Indicators (Derived from ISO 29148 and Industry Heuristics)
+
+
+
+
+Ambiguity Category
+	Mechanism of Risk
+	High-Risk Lexicon (The "Smells")
+	Impact on Development Flow
+	Subjective Quality
+	Terms rely on the reader's subjective interpretation, making "Done" impossible to prove.
+	User-friendly, Easy, Fast, Robust, Flexible, Efficient, Seamless, Intuitive, Clean 15
+	Verification Failure: A developer considers the UI "user-friendly"; the Product Owner disagrees. The story cannot close, leading to spillover.
+	Unbounded Scope
+	Terms that imply an infinite or undefined set of requirements.
+	Etc., And so on, Including but not limited to, Such as, Various, Multiple 16
+	Scope Explosion: "Support various image formats" can expand from 2 formats to 20 mid-sprint. This is the leading cause of underestimation.
+	Vague Quantification
+	Quantifiers that lack precision, preventing test case generation.
+	Some, Several, Many, A few, A lot, Approximately, Minimal, Significant 13
+	Testing Paralysis: QA cannot write a pass/fail test for "process some records." The story enters a cycle of defects and re-work.
+	Weak Action Verbs
+	Verbs that describe a state rather than a finite transformation.
+	Handle, Support, Manage, Facilitate, Enable, Coordinate, Improve 17
+	Implementation Drift: "Handle errors" is distinct from "Log errors to Sentry." Weak verbs hide the complexity of the implementation details.
+	Temporal/Ideal
+	Assumptions about the system state that ignore failure modes.
+	Ideally, Normally, Usually, Instantly, Immediately, Typically 17
+	Edge Case Neglect: Focusing on the "normal" path ignores the 80% of code required for exception handling, leading to fragile software.
+	These linguistic markers are not merely stylistic preferences; they are proxies for incomplete analysis. A user story containing "etc." is a confession that the author has not finished thinking.
+
+
+3.2 Cognitive Complexity and Estimation Variance
+
+
+The second dimension of risk is Complexity. While related to effort, complexity is distinct in that it introduces variance. The "Cone of Uncertainty" principle in software estimation states that variability decreases as knowledge increases. High estimates are often proxies for low knowledge.3
+* The Threshold of Variance: Empirical studies on Agile estimation indicate that estimation accuracy is not linear. Stories estimated at 8 Story Points or higher (in the standard Fibonacci sequence) exhibit exponentially higher variance in actual delivery time compared to stories estimated at 1, 2, or 3 points.4 A 13-point story is rarely a single atomic unit of work; it is usually a cluster of undefined requirements.
+* The "Cluster 0" Phenomenon: Research using unsupervised clustering on user stories identified a specific cluster (labeled "Cluster 0" in the study) characterized by longer text length and high complexity.20 Stories in this cluster were found to be significantly more prone to ambiguity. Conversely, "Cluster 2" represented balanced, clear requirements. This suggests that both excessive brevity (lack of detail) and excessive verbosity (confusion) are risk indicators.
+* Fibonacci Anomalies: The use of non-standard numbers (e.g., a story pointed at "7" or "10" instead of "8" or "13") often indicates a breakdown in the team's estimation process, suggesting they are treating points as "hours" rather than relative complexity, which is a known anti-pattern leading to inaccuracy.4
+
+
+3.3 Structural Deficit: The Absence of Controls
+
+
+The final dimension is Structure. Agile user stories rely on the "Definition of Done" to control risk. The absence of explicit Acceptance Criteria (AC) is a massive risk factor.
+* Gherkin Syntax and Lists: Secure user stories typically employ structured lists or the Given/When/Then (Gherkin) syntax to define boundaries. A user story description that is a pure unstructured paragraph of text is inherently riskier than one containing a bulleted list of verification steps.21
+* Dependency Hell: Stories that explicitly link to other issues (e.g., "Blocked by #402") or mention "dependency" are subject to exogenous risk. Even if the story itself is simple, the dependency creates a high probability of flow interruption.3
+________________
+
+
+4. Theoretical Framework: Weak Supervision Architecture
+
+
+Having identified what indicates risk, we require a mechanism to label the NeoDataset how based on these indicators. Manual labeling is unfeasible. We therefore turn to Weak Supervision, specifically the Data Programming paradigm formalized by the Snorkel framework, and the Noise Learning paradigm offered by Cleanlab.
+
+
+4.1 The Mathematical Basis of Data Programming (Snorkel)
+
+
+In a standard supervised setting, we seek to minimize the loss between the model's prediction $h(x)$ and the ground truth $Y$. In Weak Supervision, $Y$ is unknown. Instead, we have a set of $m$ Labeling Functions (LFs), denoted as $\Lambda = [\lambda_1, \lambda_2,..., \lambda_m]$.
+Each LF $\lambda_j(x_i)$ takes a data point $x_i$ and outputs a label in $\{-1, 0, 1\}$ (where -1 is Abstain, 0 is Low Risk, 1 is High Risk).
+The naive approach would be to take a Majority Vote of these LFs. However, LFs are inherently noisy and, crucially, correlated. For example, an LF detecting the word "various" and an LF detecting the word "multiple" are highly correlated; treating them as independent votes would artificially inflate the confidence of the label.
+Snorkel addresses this by learning a Generative Model that estimates the latent ground truth $Y$ by modeling the agreements and disagreements between the LFs.22
+The generative model estimates the accuracy $\phi_j$ of each LF $\lambda_j$ without knowing $Y$, by observing the covariance matrix of the LFs. If $\lambda_1$ and $\lambda_2$ agree often, and $\lambda_3$ disagrees with both, the model can infer (assuming a majority of LFs are better than random) that $\lambda_1$ and $\lambda_2$ are likely accurate or correlated.
+The output of this phase is not a hard label, but a probabilistic label $\tilde{Y} \in $, representing $P(Y=1 | \Lambda)$. These probabilistic labels serve as the training targets for the final Discriminative Model (e.g., BERT).
+
+
+4.2 Confident Learning (Cleanlab)
+
+
+While Snorkel synthesizes the labels, Cleanlab provides a mechanism to sanitize them. Cleanlab is based on the theory of Confident Learning, which seeks to estimate the joint distribution of noisy labels and true labels, $P(\tilde{Y}, Y^*)$.24
+Cleanlab works by "pruning" or "filtering" the dataset. Once we have a set of probabilistic labels from Snorkel, we can train a temporary classifier. We then use Cleanlab to find "label issues"—instances where the classifier is highly confident in a prediction that disagrees with the Snorkel label.
+* Pruning vs. Re-weighting: In the context of the NeoDataset, we should likely prioritize pruning (removing ambiguous data points) over re-weighting, as we have a large volume of data (20k+) and can afford to discard the "grey area" stories to create a cleaner signal for the risk patterns.26
+* Label Health Score: Cleanlab allows us to calculate an "Overall Label Health Score" for the dataset.28 This metric is crucial for the user to track the quality of their LFs. If the LFs are random, the Health Score will be low. As the LFs improve, the Health Score should rise.
+________________
+
+
+5. Heuristic Engineering: The Labeling Function Architecture
+
+
+This section translates the risk taxonomy (Section 3) into concrete Labeling Functions (LFs) for the NeoDataset. These are the specific heuristics the user must implement in Python (using Snorkel) to generate the training data.
+
+
+5.1 Lexical LFs: Encoding ISO 29148
+
+
+These LFs utilize regex matching to detect the "weak words" identified in Table 1.
+* LF_AMBIGUITY_VAGUE:
+   * Logic: Scans description for subjective adjectives.
+   * Keywords: ['easy', 'user-friendly', 'robust', 'seamless', 'fast', 'clean', 'efficient'].
+   * Label: RISK (1).
+   * Justification: These terms are unverifiable. A story demanding "robust error handling" without specifying the errors is a prime candidate for scope creep.15
+* LF_AMBIGUITY_LOOPHOLE:
+   * Logic: Scans for open-ended list terminators.
+   * Keywords: ['etc', 'et cetera', 'and so on', 'including but not limited to', '...'].
+   * Label: RISK (1).
+   * Justification: "Etc" is an explicit admission of incomplete requirements analysis. It hides work that contributes to spillover.16
+* LF_QUANTIFICATION_UNCERTAINTY:
+   * Logic: Scans for vague quantifiers.
+   * Keywords: ['some', 'several', 'many', 'a few', 'various', 'multiple'].
+   * Label: RISK (1).
+   * Justification: "Support multiple formats" allows the stakeholder to demand support for 50 formats when the developer planned for 2.13
+
+
+5.2 Metadata LFs: Leveraging Agile Estimation Dynamics
+
+
+These LFs use the story_points column.
+* LF_HIGH_COMPLEXITY:
+   * Logic: if story_points >= 8: return RISK.
+   * Label: RISK (1).
+   * Justification: Based on the "Cone of Uncertainty," variance increases with size. Stories $\ge$ 8 points (in a typical 1-13 scale) are statistically significantly more likely to miss their deadline.4
+* LF_LOW_COMPLEXITY_SAFE:
+   * Logic: if story_points <= 2: return SAFE.
+   * Label: SAFE (0).
+   * Justification: Small tasks have lower absolute variance. Even if a 1-point story doubles in effort, it only costs 1 extra point, whereas a 13-point story doubling is a catastrophe.
+* LF_FIBONACCI_ANOMALY:
+   * Logic: if story_points not in : return RISK.
+   * Label: RISK (1).
+   * Justification: Teams using non-standard numbers (e.g., "7") are likely not adhering to strict Agile estimation protocols, indicating potential process maturity risks.3
+
+
+5.3 Structural LFs: Syntactic Completeness
+
+
+These LFs analyze the structure of the text.
+* LF_MISSING_ACCEPTANCE_CRITERIA:
+   * Logic: if "acceptance criteria" not in description.lower() AND list_item_count < 3: return RISK.
+   * Label: RISK (1).
+   * Justification: A story without a "Definition of Done" is a hypothesis, not a requirement. The lack of a list structure (bullets) strongly correlates with a lack of rigorous thought.21
+* LF_DEPENDENCY_LINK:
+   * Logic: if regex_match(r"(blocked by|depends on|relates to) #\d+"): return RISK.
+   * Label: RISK (1).
+   * Justification: Dependencies introduce blocking risks that are independent of the story's complexity.
+
+
+5.4 Unsupervised Clustering LFs: The "Outlier" Detector
+
+
+To capture risks that do not fit linguistic rules (e.g., "Technical Debt" or "Refactoring" tasks which might use precise language but are inherently risky), we employ unsupervised clustering as a labeling mechanism.
+* LF_CLUSTER_OUTLIER:
+   * Method:
+      1. Vectorize all descriptions using TF-IDF or BERT embeddings.
+      2. Apply K-Means or DBSCAN to cluster the stories.
+      3. Identify clusters corresponding to "Standard Feature Work" (the majority) vs. "Anomalous Work" (small, dense clusters or noise points).
+      4. Identify specific clusters that map to 20's "Cluster 0" (Long/Complex) or "Cluster 1" (Short/Complex).
+   * Logic: if story_in_cluster(outlier_cluster_id): return RISK.
+   * Justification: "Cluster 0" stories (long, complex text) have been empirically shown to carry higher ambiguity.20 Furthermore, unsupervised anomaly detection is a standard method for identifying fraud and risk in unlabeled datasets.30
+________________
+
+
+6. Noise Remediation: The Cleanlab Pipeline
+
+
+The LFs defined above will inevitably generate noise. LF_AMBIGUITY_VAGUE might flag a story as risky because it contains the word "Fast," even if the story is "Make the icon load fast" (a trivial CSS change). If we train a model directly on these raw LF votes, the model will learn these rigid rules rather than the underlying concept of risk.
+We utilize Cleanlab to sanitize this process. The pipeline operates as follows:
+1. Snorkel Aggregation: The Snorkel Label Model aggregates the LFs into a single probabilistic label for each story, e.g., Story A: $P(Risk)=0.85$, Story B: $P(Risk)=0.55$.
+2. Preliminary Training: Train a lightweight classifier (e.g., Logistic Regression or a simple FastText model 6) on these probabilistic labels.
+3. Label Issue Detection: Use Cleanlab's find_label_issues function. This function analyzes the out-of-sample predicted probabilities of the preliminary model. If the model (looking at the full text context) is $99\%$ sure a story is "Safe," but the Snorkel label says "Risk" (perhaps due to a single keyword), Cleanlab flags this as a label error.26
+4. Filtration: Remove the stories flagged as "Label Issues." This leaves a subset of the NeoDataset where the LFs and the semantic context agree, providing a high-quality, low-noise training set.
+5. Health Monitoring: Use cleanlab.dataset.overall_label_health_score to quantify the cleanliness of the resulting dataset. This metric serves as a feedback loop; if the health score is low, the researcher must refine the LFs (e.g., by adding exceptions to the regex rules).32
+________________
+
+
+7. Validation Regimes: Validating Without Ground Truth
+
+
+A central scientific challenge of this approach is validation. Without a "Risk" column, how do we prove the model works? We must employ Proxy Validation and Cross-Correlation.
+
+
+7.1 The Proxy Task Methodology
+
+
+We cannot validate against "True Risk" (which is unknown), but we can validate against "Perceived Risk" (Human Expert Judgment).
+* Design: The researcher constructs a "Tiny Gold Set" of 50-100 randomly selected stories from the NeoDataset.
+* Annotation: These 100 stories are manually annotated by a domain expert (the researcher) using the risk taxonomy. Does this story look risky?
+* Evaluation: We evaluate the Snorkel Label Model's accuracy against this small Gold Set. This measures how well our LFs encode expert intuition.33
+* Caveat: Research warns that proxy tasks do not always predict real-world outcomes.34 A story might look safe but still fail due to team dynamics. We must acknowledge this limitation: we are predicting intrinsic requirement risk, not extrinsic execution risk.
+
+
+7.2 Cross-Metric Correlation
+
+
+We can also validate the model by checking if the predicted Risk correlates with independent metadata variables that were not heavily used in the LFs.
+* Hypothesis: If the model is correctly identifying ambiguity (via text), the "High Risk" stories should statistically have higher Story Points than "Low Risk" stories (even if we exclude the explicit LF_HIGH_COMPLEXITY from the validation run).
+* Method: Calculate the Pearson correlation coefficient between the model's Risk_Probability output and the story_points variable. A strong positive correlation confirms that the text-based risk signals align with the team's own assessment of difficulty.20
+________________
+
+
+8. Conclusion and Future Outlook
+
+
+This report has outlined a comprehensive architecture for predicting Agile user story risk using the unlabeled NeoDataset. By synthesizing the ISO 29148 standard for ambiguity, Agile estimation theory for complexity, and Data Programming for label generation, we can overcome the data labeling bottleneck that plagues software engineering analytics.
+The proposed methodology moves beyond simple keyword matching. By using Snorkel to model the correlations between heuristics and Cleanlab to purge inconsistent data, we create a robust, probabilistic training set. This allows us to train deep learning models (like BERT or RoBERTa) that can generalize beyond the specific rules encoded in the LFs, learning to recognize the subtle semantic "smell" of risk in user stories.
+Future Implications:
+* The "Virtual Agile Coach": The ultimate application of this model is a real-time plugin for tools like Jira or GitLab. As a product owner types a story, the model analyzes the text. If the risk probability exceeds a threshold, the "Virtual Coach" intervenes, highlighting the ambiguous words ("easy," "etc.") and suggesting structural improvements (e.g., "Add acceptance criteria").
+* Dynamic Governance: Unlike static checklists, a weak supervision model can be updated continuously. As the team's definition of risk evolves, the LFs can be tweaked, and the model retrained, ensuring the risk assessment remains aligned with the organization's maturity.
+In conclusion, while the NeoDataset lacks explicit risk labels, it contains all the necessary signals to infer them. Through the rigorous application of Weak Supervision, we can unlock this latent value, providing Agile teams with the predictive foresight necessary to reduce spillover, manage scope, and ultimately deliver software more predictably.
+Works cited
+1. Agile estimation: empirical study on critical factors | 1 | Recent Adv, accessed November 20, 2025, https://www.taylorfrancis.com/chapters/edit/10.1201/9781003405573-1/agile-estimation-empirical-study-critical-factors-ravi-kiran-mallidi-manmohan-sharma
+2. What are story points in Agile and how do you estimate them? - Atlassian, accessed November 20, 2025, https://www.atlassian.com/agile/project-management/estimation
+3. The relative side of Agile: using story points for estimations - BigPicture, accessed November 20, 2025, https://bigpicture.one/blog/story-points-in-agile/
+4. The Problem with Agile Estimation, accessed November 20, 2025, https://www.easyagile.com/blog/problem-with-agile-estimation
+5. NEODATASET is a dataset containing title and description in natural language of User Stories and their Story Points extracted from GitLab - GitHub, accessed November 20, 2025, https://github.com/giseldo/neodataset
+6. Predicting the Duration of User Stories in Agile Project Management, accessed November 20, 2025, https://cris.vtt.fi/en/publications/predicting-theduration-ofuser-stories-inagile-project-management/
+7. Enhancing Agile Story Point Estimation: Integrating Deep Learning, Machine Learning, and Natural Language Processing with SBERT and Gradient Boosted Trees - MDPI, accessed November 20, 2025, https://www.mdpi.com/2076-3417/14/16/7305
+8. Unsupervised Machine Learning in Cybersecurity: A Comprehensive Analysis - Medium, accessed November 20, 2025, https://medium.com/@leev574/unsupervised-machine-learning-in-cybersecurity-a-comprehensive-analysis-aa4d854e65d2
+9. User Story NeoDataset - Mendeley Data, accessed November 20, 2025, https://data.mendeley.com/datasets/skk2wn9j86
+10. User Story T - SciTePress, accessed November 20, 2025, https://www.scitepress.org/publishedPapers/2024/126192/pdf/index.html
+11. User Story Tutor (UST) to Support Agile Software Developers - arXiv, accessed November 20, 2025, https://arxiv.org/html/2406.16259v1
+12. Identifying Ambiguity Problems in User Stories : A Proposed Framework - CEUR-WS, accessed November 20, 2025, https://ceur-ws.org/Vol-3139/paper06.pdf
+13. Guide to Writing Requirements - incose, accessed November 20, 2025, https://www.incose.org/docs/default-source/working-groups/requirements-wg/gtwr/incose_rwg_gtwr_v4_040423_final_drafts.pdf?sfvrsn=5c877fc7_2
+14. A Requirements Specification Method: An Experience Report in Aerospace - WERpapers, accessed November 20, 2025, https://werpapers.dimap.ufrn.br/papers/WER2023/WER_2023_paper_29.pdf
+15. 7 Tactics For Writing Better Requirements + QVscribe - QRA Corp, accessed November 20, 2025, https://qracorp.com/7-tactics-for-writing-better-requirements-qvscribe/
+16. Top 10 ambiguous phrases to avoid when writing business requirements - or your project will fail - Be Positive, accessed November 20, 2025, https://www.be-positive.co.uk/blog/top-10-ambiguous-phrases-to-avoid-when-writing-business-requirements-or-your-project-will-fail/
+17. Writing Good Requirements: Ambiguous Terms to Avoid, accessed November 20, 2025, https://www.oir.caltech.edu/twiki_oir/pub/Keck/NGAO/SystemsEngineeringGroup/Wiegers_Words_to_Avoid_Requirements.pdf
+18. Configuration of metrics: definition of the list of ambiguous sentences - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/figure/Configuration-of-metrics-definition-of-the-list-of-ambiguous-sentences_fig1_257455299
+19. 164 Phrases You Should Never Use in an Essay—and the Powerful Alternatives - Vappingo, accessed November 20, 2025, https://www.vappingo.com/word-blog/words-you-should-never-use-in-an-essay/
+20. Bridging Precision and Complexity: A Novel Machine Learning Approach for Ambiguity Detection in Software Requirements - IEEE Xplore, accessed November 20, 2025, https://ieeexplore.ieee.org/iel8/6287639/10820123/10843220.pdf
+21. Break Down Agile User Stories into Tasks and Estimate Level of Effort - Pluralsight, accessed November 20, 2025, https://www.pluralsight.com/resources/blog/guides/break-down-agile-user-stories-into-tasks-and-estimate-level-of-effort
+22. Snorkel: rapid training data creation with weak supervision - PMC - PubMed Central, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC7075849/
+23. Snuba: Automating Weak Supervision to Label Training Data - VLDB Endowment, accessed November 20, 2025, https://www.vldb.org/pvldb/vol12/p223-varma.pdf
+24. Classification with noisy labels? - Cross Validated - Stats StackExchange, accessed November 20, 2025, https://stats.stackexchange.com/questions/218656/classification-with-noisy-labels
+25. Validity Analysis of Software Defect Prediction Model for Mis-label Correction Based on CleanLab - SemOpenAlex, accessed November 20, 2025, https://semopenalex.org/work/W4388675535
+26. Dealing with noisy training labels in text classification using deep learning - Stack Overflow, accessed November 20, 2025, https://stackoverflow.com/questions/40009134/dealing-with-noisy-training-labels-in-text-classification-using-deep-learning
+27. REIN: A Comprehensive Benchmark Framework for Data Cleaning Methods in ML Pipelines - OpenProceedings.org, accessed November 20, 2025, https://openproceedings.org/2023/conf/edbt/paper-49.pdf
+28. Automatically Find Errors in ML Datasets - cleanlab 2.0, accessed November 20, 2025, https://cleanlab.ai/blog/learn/cleanlab-2/
+29. It's About Time! Understanding the Dynamic Team Process-Performance Relationship Using Micro- and Macroscale Time Lenses - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/382690385_It's_about_time_Understanding_the_dynamic_team_process-performance_relationship_using_micro-_and_macroscale_time_lenses
+30. Quantifying Cluster Quality with Unsupervised Machine Learning - DataVisor, accessed November 20, 2025, https://www.datavisor.com/blog/quantifying-cluster-quality-with-unsupervised-machine-learning
+31. Unsupervised models: clustering and anomaly detection – Data Analytics with Accounting Data and R - The Texas A&M University System, accessed November 20, 2025, https://odp.library.tamu.edu/dataanalyticsaccounting/chapter/unsupervised-models-2/
+32. An open-source platform to catch all sorts of issues in all sorts of datasets - Cleanlab, accessed November 20, 2025, https://cleanlab.ai/blog/learn/cleanlab-2.6
+33. [2412.07111] Predictable Emergent Abilities of LLMs: Proxy Tasks Are All You Need - arXiv, accessed November 20, 2025, https://arxiv.org/abs/2412.07111
+34. Proxy tasks and subjective measures can be misleading in evaluating explainable AI systems | by Zana Bucinca | Harvard HCI | Medium, accessed November 20, 2025, https://medium.com/harvard-hci/proxy-tasks-and-subjective-measures-can-be-misleading-in-evaluating-explainable-ai-systems-db8d5477cb85

@@ -30,14 +30,14 @@ Assesses the quality and quantity of your historical data to set realistic expec
 - **Overall Grade**: A-F rating with actionable recommendations
 
 ### 2. 🎯 Probabilistic Story Assessor (PSA)
-Analyzes new user stories and assigns risk levels based on historical patterns.
+Analyzes new user stories and assigns risk levels based on machine learning models trained on real-world data.
 
 **Features:**
 - Risk classification: Low, Medium, High
 - Confidence scoring (0-100%)
-- Detailed explanation of risk factors
-- Similar historical stories identification
-- **Pluggable Architecture**: Swap algorithms without changing other code
+- ML-powered predictions using augmented NeoDataset
+- Trained on 20,000+ real user stories
+- **Pluggable Architecture**: Swap ML models without changing other code
 
 ### 3. ⚡ Scope Impact Simulator (SIS)
 Models the timeline impact of adding new work to a sprint, making scope creep costs tangible.
@@ -54,38 +54,48 @@ Models the timeline impact of adding new work to a sprint, making scope creep co
 
 ### Technology Stack
 - **Backend**: Python 3.9+ with Flask 3.0
-- **Database**: SQLite (local, zero-config)
+- **Data Source**: Augmented NeoDataset (~20K real user stories)
+- **ML Pipeline**: Snorkel (weak supervision) + Cleanlab (noise filtering)
 - **Frontend**: Modern HTML5, CSS3, Vanilla JavaScript
 - **Testing**: pytest with comprehensive test coverage
 
 ### Project Structure
 ```
-sprintguard_poc/
+SprintGuard/
 ├── data/
-│   ├── sprintguard.db              # SQLite database
-│   ├── seed_stories.json           # Historical data
-│   └── seed_data_generator.py      # Data generation script
+│   ├── neodataset_augmented.csv            # Augmented dataset (20K+ stories)
+│   ├── neodataset_augmented_high_confidence.csv  # High-conf subset
+│   └── sprintguard.db                      # Optional SQLite (future use)
 ├── src/
 │   ├── models/
-│   │   └── story.py                # Story data model
+│   │   └── story.py                        # Story data model
 │   ├── analyzers/
-│   │   ├── risk_assessor_interface.py    # Abstract PSA interface
-│   │   ├── keyword_risk_assessor.py      # V1 implementation
-│   │   ├── health_checker.py             # Data quality analyzer
-│   │   └── scope_simulator.py            # Timeline simulator
-│   ├── data_loader.py              # Database abstraction layer
-│   ├── database.py                 # Database initialization
+│   │   ├── risk_assessor_interface.py      # Abstract PSA interface
+│   │   ├── ml_risk_assessor.py             # ML implementation
+│   │   ├── health_checker.py               # Data quality analyzer
+│   │   └── scope_simulator.py              # Timeline simulator
+│   ├── ml/                                 # ML pipeline
+│   │   ├── neodataset_loader.py            # Dataset loading
+│   │   ├── labeling_functions.py           # 18 research-backed LFs
+│   │   ├── weak_supervision_pipeline.py    # Snorkel aggregation
+│   │   └── cleanlab_pipeline.py            # Noise detection
+│   ├── data_loader.py                      # Data abstraction layer
+│   ├── database.py                         # Optional DB utils
 │   └── utils/
-│       └── response_formatter.py   # API response formatting
+│       └── response_formatter.py           # API response formatting
+├── scripts/
+│   ├── explore_neodataset.py               # EDA tool
+│   └── augment_neodataset.py               # Full augmentation pipeline
 ├── static/
-│   ├── css/style.css               # Application styles
-│   └── js/app.js                   # Frontend logic
+│   ├── css/style.css                       # Application styles
+│   └── js/app.js                           # Frontend logic
 ├── templates/
-│   └── index.html                  # Main UI
-├── tests/                          # Unit tests
-├── app.py                          # Flask application
-├── config.py                       # Configuration
-└── requirements.txt                # Dependencies
+│   └── index.html                          # Main UI
+├── tests/                                  # Unit tests
+├── app.py                                  # Flask application
+├── config.py                               # Configuration
+├── requirements.txt                        # Core dependencies
+└── requirements-ml.txt                     # ML dependencies
 ```
 
 ---
@@ -109,22 +119,33 @@ python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. **Install dependencies:**
+3. **Install core dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Initialize database** (already done if following this README):
+4. **Install ML dependencies:**
 ```bash
-python3 -c "from src.database import init_database, seed_database_from_json; init_database(); seed_database_from_json()"
+pip install -r requirements-ml.txt
 ```
 
-5. **Start the application:**
+5. **Run NeoDataset augmentation** (one-time setup, ~15-30 minutes):
 ```bash
-python3 app.py
+python scripts/augment_neodataset.py
+```
+This will:
+- Download NeoDataset (~20K user stories) from HuggingFace
+- Apply 18 research-backed labeling functions
+- Train Snorkel model to aggregate labels
+- Use Cleanlab to filter noisy labels
+- Generate `data/neodataset_augmented.csv`
+
+6. **Start the application:**
+```bash
+python app.py
 ```
 
-6. **Open your browser:**
+7. **Open your browser:**
 ```
 http://localhost:5001
 ```

@@ -2,6 +2,7 @@
 SprintGuard PoC - Main Flask Application
 Provides REST API for risk assessment, health checks, and scope simulation.
 """
+import sys
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
@@ -9,7 +10,7 @@ from config import DEBUG, HOST, PORT
 from src.data_loader import get_data_loader
 from src.analyzers import (
     HealthChecker,
-    KeywordRiskAssessor,
+    MLRiskAssessor,
     ScopeSimulator
 )
 from src.utils import format_success, format_error
@@ -18,14 +19,31 @@ from src.utils import format_success, format_error
 app = Flask(__name__)
 CORS(app)  # Enable CORS for API access
 
-# Initialize data loader
-data_loader = get_data_loader()
+# Initialize data loader for augmented NeoDataset
+print("="*70)
+print("SprintGuard - Loading Data...")
+print("="*70)
 
-# Initialize analyzers with historical data
-# NOTE: This is where the ML professor can plug in their implementation!
-# Simply replace KeywordRiskAssessor with their custom class.
-historical_stories = data_loader.get_all_stories()
-risk_assessor = KeywordRiskAssessor(historical_stories)
+try:
+    data_loader = get_data_loader(use_neodataset=True, high_conf_only=False)
+    historical_stories = data_loader.get_all_stories()
+    print(f"✓ Loaded {len(historical_stories)} stories from augmented NeoDataset")
+except FileNotFoundError as e:
+    print(str(e))
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: Failed to load data: {str(e)}")
+    sys.exit(1)
+
+# Initialize ML Risk Assessor (plug-and-play)
+# To integrate your trained model:
+#   1. Train model on augmented NeoDataset
+#   2. Save model to 'models/risk_model.pkl'
+#   3. Implement prediction logic in MLRiskAssessor.assess()
+risk_assessor = MLRiskAssessor(
+    historical_stories=historical_stories,
+    model_path='models/risk_model.pkl'
+)
 scope_simulator = ScopeSimulator()
 
 

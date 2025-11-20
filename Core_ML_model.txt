@@ -1,0 +1,296 @@
+Architecting the Probabilistic Story Assessor: A Neuro-Symbolic Approach to Agile Risk Prediction
+
+
+
+
+1. Introduction: The Deterministic Fallacy in Agile Planning
+
+
+The paradigm of Agile software development is predicated on the acceptance of uncertainty. Unlike the rigid, deterministic structures of Waterfall methodologies, Agile frameworks—specifically Scrum and Kanban—operate on the principle of empirical process control, where decisions are made based on observation and experimentation rather than detailed upfront prediction. However, this flexibility often masks a critical vulnerability: the inability to accurately forecast risk and volatility at the granularity of individual work items, or "user stories." The industry standard for estimation, "Story Points," is a relative measure of complexity that notoriously suffers from subjectivity, inflation, and a lack of standardization across teams. As noted in the Chaos Report, a staggering percentage of software projects fail to meet time and budget constraints, a phenomenon frequently attributed to poorly specified requirements and the "cone of uncertainty" that widens as projects scale.1
+The objective of this research report is to define the optimal architectural strategy for a Probabilistic Story Assessor (PSA). This system aims to transition risk assessment from a subjective, qualitative team discussion to a quantitative, data-driven prediction task. By analyzing the textual description of a user story before development begins, the PSA will predict its inherent volatility—classified as its "Risk Level"—thereby enabling teams to proactively mitigate potential delays, sprint spillovers, and technical debt.
+This report proceeds from the understanding that the PSA must function within strict operational constraints: it must deliver predictions in real-time (sub-second latency) to support interactive planning meetings; it must be strictly interpretable to foster trust among non-technical stakeholders; and it must be robust enough to generalize across diverse team contexts despite limited local training data. The proposed solution—a Hybrid Neuro-Symbolic Architecture combining distilled Transformer models with gradient-boosted decision trees—represents the convergence of state-of-the-art Natural Language Processing (NLP) with the pragmatic, tabular efficiency of classical machine learning.
+
+
+1.1 The Engineering Challenge: Latency, Interpretability, and Data Sparsity
+
+
+Developing the PSA is not merely a text classification task; it is an exercise in constrained optimization. The first constraint is latency. In a typical Sprint Planning or Backlog Refinement session, the Product Owner and Engineering Team review dozens of stories rapidly. A prediction system that requires several seconds to inference—typical of Large Language Models (LLMs) like GPT-4—disrupts the flow of conversation and reduces adoption. Research into model benchmarking indicates that while billion-parameter models achieve superior reasoning, their inference costs and latency render them unsuitable for high-frequency, real-time loops without massive hardware acceleration.2
+The second, and perhaps more critical, constraint is interpretability. A "black box" prediction of "High Risk" is actionable only if the cause is understood. If a model flags a story as risky, the team must know why—is it because the acceptance criteria are ambiguous? Is it because the text contains keywords historically associated with integration failures, such as "API" or "legacy"? Stakeholders require a "white-box" or "glass-box" approach where the decision logic is transparent. Pure deep learning models, while accurate, often obfuscate these causal links within millions of parameters, making "explainability" a complex post-hoc exercise.4
+Finally, the challenge of small data robustness cannot be overstated. While global datasets like the NeoDataset provide a macro-view of Agile practices, individual teams often have unique dialects and estimation baselines. A model trained solely on a global corpus may fail to capture the nuances of a specific team's "Definition of Ready." Therefore, the architecture must support Transfer Learning—leveraging general linguistic knowledge while fine-tuning on small, team-specific datasets (often fewer than 100 examples) without overfitting. This requirement points towards techniques like Few-Shot Learning and parameter-efficient fine-tuning.6
+
+
+2. Data Foundation: The NeoDataset and Target Synthesis
+
+
+The efficacy of any machine learning system is bounded by the quality of its training data. For the PSA, we rely on the NeoDataset, a significant contribution to the software engineering research community. This dataset provides a standardized, multi-project corpus that allows us to benchmark predictive models against real-world Agile artifacts.
+
+
+2.1 Anatomical Analysis of the NeoDataset
+
+
+The NeoDataset is a curated repository mined from GitLab, encompassing 34 distinct software development projects and over 40,000 user stories.1 It was mined between January and April 2023, ensuring that the development practices reflected in the data are contemporary. The dataset structure is pivotal to our feature engineering strategy. While the simplified CSV version contains core attributes like issuekey, title, description, and storypoints, the raw JSON data includes over 70 attributes, offering a rich substrate for latent variable extraction.1
+The diversity of the NeoDataset is a double-edged sword. The projects cover different programming languages, business domains, and team sizes.10 This heterogeneity ensures that a model trained on the entire corpus will learn generalized representations of software tasks (e.g., "authentication" is always a security concern). However, it also introduces significant variance in how "Story Points" are used. In some projects, a "5" might represent a day's work; in others, it represents complexity independent of time. This necessitates a normalization strategy, likely using the idproject attribute to stratify or standardize target variables per project.8
+Table 1: Structural Analysis of NeoDataset Attributes
+
+
+Attribute
+	Data Type
+	Description
+	PSA Utility
+	title
+	Text
+	The summary of the requirement.
+	High: Contains dense, high-information keywords (e.g., "Refactor", "Fix", "OAuth").
+	description
+	Text
+	Detailed acceptance criteria and context.
+	Critical: The primary source for extracting ambiguity, readability, and complexity features.
+	storypoints
+	Integer
+	The estimated effort (complexity).
+	Proxy Target: High points correlate with complexity, though noisy across projects.
+	created
+	Timestamp
+	Date of story creation.
+	Context: Useful for temporal splitting (train on past, test on future) to prevent data leakage.
+	idproject
+	Categorical
+	Unique project identifier.
+	Stratification: Essential for normalizing risk thresholds per team.
+	state
+	Categorical
+	Status (Closed/Open).
+	Filter: We train only on Closed items where the outcome is known.9
+	
+
+2.2 Synthesizing the "Risk" Target Variable
+
+
+The prompt specifies that the dataset will be augmented with a "Risk Level" variable derived via scientific methods. To understand what the model is predicting, we must articulate the theoretical basis of this variable. In Agile research, "risk" is rarely a single explicit field entered by a human; rather, it is a latent construct inferred from volatility metrics. A user story is "risky" if it exhibits behavior contrary to the "predictable delivery" goal of Scrum.
+We posit that the "Risk Level" target ($Y$) is a composite label derived from three primary signals found in the historical metadata of the NeoDataset (specifically the 70+ JSON attributes):
+1. Sprint Spillover & Cycle Time Deviation: A story that was not completed in its assigned sprint (spillover) or whose "Cycle Time" (time from In Progress to Done) exceeded the team's standard deviation is inherently high risk. Research indicates that cycle time variation is a prime indicator of process instability.11
+2. Code Churn & Rework: High "Code Churn"—the volume of lines added, modified, or deleted relative to the story size—signals volatility. Stories that generate excessive churn often reflect poorly understood requirements or "unknown unknowns" that emerge during development.12
+3. Estimation Variance: If the dataset includes "actual effort" (time spent) versus "estimated effort" (story points), the delta between these two is the gold standard for risk. A story estimated at 3 points that took 5 days is a high-risk outlier.14
+Based on these factors, the "Risk Level" variable for the PoC is likely categorized as:
+* Low Risk (Class 0): Stories completed within one standard deviation of the average cycle time for their point estimate, with nominal churn.
+* Medium Risk (Class 1): Stories with moderate delays or churn, typically involving standard refactoring or minor scope creep.
+* High Risk (Class 2): "outlier" stories—those that spilled over sprints, required significant post-merge rework (bug fixes), or involved massive code churn.
+This tri-class classification problem allows the PSA to prioritize attention. The goal is not just to predict points (a regression task) but to categorize the volatility of the work.15
+
+
+3. Feature Engineering: The Neuro-Symbolic Bridge
+
+
+The central thesis of this architecture is that text alone is insufficient for interpretability, but metadata alone is insufficient for accuracy. A "Neuro-Symbolic" approach fuses the two: "Neural" features derived from Deep Learning models capture the semantic meaning of the text, while "Symbolic" features (explicit, rule-based metrics) capture the structural quality of the requirements. This dual-pathway feature engineering strategy is crucial for meeting the "Explainability Requirement".16
+
+
+3.1 Symbolic Linguistic Features (The "White Box")
+
+
+To enable stakeholders to understand why a story is risky, we must extract explicit linguistic markers that act as proxies for risk. These are "white box" features because their relationship to the output is linear and intuitively understandable.
+
+
+3.1.1 Readability Indices
+
+
+The clarity of a user story's description is a strong predictor of its successful implementation. Ambiguous or overly complex writing leads to cognitive load and misinterpretation by developers. We incorporate standardized readability metrics such as the Flesch Reading Ease and the Gunning Fog Index.18
+* Mechanism: These indices calculate scores based on sentence length and syllable count.
+* Insight: A low Flesch score (indicating difficult text) or a high Gunning Fog index (indicating a need for advanced education to comprehend) serves as a direct risk signal. Research on the "User Story Tutor" tool confirms that readability correlates with user story quality.1 If the PSA flags a story as "High Risk," it can justify this by stating, "The description is too complex (Gunning Fog: 18), potentially leading to developer misunderstanding."
+
+
+3.1.2 Ambiguity and Uncertainty Detection
+
+
+Ambiguity is the enemy of Agile execution. We employ Natural Language Processing (NLP) rules to detect "nocuous ambiguity"—language that hides specific requirements behind vague concepts.20
+* Modal Verb Density: The frequency of words like "might," "could," "should," or "possibly" indicates uncertainty in the requirements. A high count of modal verbs suggests that the Product Owner is unsure of the desired behavior, which directly translates to implementation risk.
+* Vague Quantifiers: Terms such as "user-friendly," "robust," "fast," or "appropriate" are non-testable. Their presence increases the likelihood of "scope creep" or rejection during Quality Assurance (QA).
+
+
+3.1.3 Sentiment Analysis and Volatility
+
+
+While user stories are technical documents, the emotional tone of the language often leaks information about urgency or frustration. We utilize a lexicon-based sentiment analyzer (like VADER) to extract polarity scores.22
+* Insight: Negative sentiment in descriptions (e.g., "urgently fix," "severe crash," "terrible performance") often correlates with "hot fixes" or high-pressure tasks that are prone to errors. Conversely, extremely positive but vague language ("delightful experience") might mask a lack of technical detail. Research in financial domains has long established a link between negative sentiment and market volatility; we apply a similar theoretical framework to project volatility.23
+
+
+3.1.4 Domain-Specific Risk Lexicons
+
+
+We generate a "Risk Bag-of-Words" specific to the NeoDataset. By analyzing the term frequency distribution in the "High Risk" class versus the "Low Risk" class, we identify keywords that act as statistical predictors of danger.
+* Keywords: Terms like "API," "Integration," "Legacy," "Refactor," "Security," and "OAuth" are typically associated with higher complexity and external dependencies.25 The model will explicitly count the occurrences of these high-risk stems.
+
+
+3.2 Neural Semantic Features (The "Black Box")
+
+
+While symbolic features capture style, they miss context. The word "Bank" means something different in "River Bank" versus "Bank Account." To capture this semantic nuance, we employ Contextual Embeddings.
+* Mechanism: We utilize a Transformer-based language model to convert the title and description text into a dense vector representation (a sequence of numbers). Unlike older methods like TF-IDF, which merely count words, Transformers understand the relationship between words, capturing the holistic meaning of the story.7
+* Implementation: We extract the embedding vector from the `` (Classification) token of the Transformer. This vector serves as a compressed semantic summary of the entire input text, which is then fed into the classifier.26
+
+
+4. Architectural Recommendation: The Hybrid DistilBERT-XGBoost Model
+
+
+The prompt requires a recommendation that balances three competing constraints: Inference Speed (< 1s), Accuracy, and Interpretability. After evaluating several candidate architectures—including pure Large Language Models (LLMs) and classical Logistic Regression—the analysis strongly supports a Hybrid Neuro-Symbolic Architecture. This architecture utilizes DistilBERT as a feature extractor and XGBoost as the classification engine.
+
+
+4.1 Why Not Pure LLMs or Classical ML?
+
+
+* Rejection of LLMs (e.g., GPT-4, Llama): While LLMs offer superior reasoning, their latency is prohibitive for real-time interactive tools. API calls to large generative models frequently exceed the 1-second threshold, and their stochastic nature (non-deterministic outputs) makes them difficult to validate for critical risk assessments. Furthermore, they function as "black boxes," making it difficult to isolate exactly why a specific risk label was assigned without complex prompting strategies that further increase latency.2
+* Rejection of Logistic Regression: Classical methods like TF-IDF + Logistic Regression are fast and interpretable but fail to capture the semantic complexity of software engineering text. They cannot distinguish between "integration of API" (high risk) and "documentation of API" (low risk) because they treat words as independent variables.29
+
+
+4.2 The Optimal Solution: DistilBERT + XGBoost
+
+
+This hybrid approach combines the "best of both worlds": the deep linguistic understanding of Transformers and the speed, interpretability, and tabular dominance of Gradient Boosting Machines.26
+
+
+4.2.1 The Encoder: DistilBERT
+
+
+We select DistilBERT (Distilled Bidirectional Encoder Representations from Transformers) as the semantic engine. DistilBERT is a smaller, faster, cheaper version of BERT that retains 97% of its performance while being 60% faster and 40% smaller.29
+* Latency Advantage: On standard CPU hardware, DistilBERT can process a typical user story (100-300 tokens) in approximately 30-60 milliseconds, well within the 1-second constraint.31
+* Knowledge Distillation: DistilBERT is trained using a "student-teacher" framework where it learns to mimic the probability distributions of the larger BERT model. This ensures that it retains the deep contextual knowledge (e.g., understanding that "bug" in software context means defect, not insect) without the computational overhead.32
+
+
+4.2.2 The Classifier: XGBoost
+
+
+The output of DistilBERT (the 768-dimensional `` vector) is concatenated with the vector of Symbolic Linguistic Features (Readability, Sentiment, etc.) to form the final input for XGBoost (Extreme Gradient Boosting).
+* Tabular Efficacy: XGBoost is the state-of-the-art algorithm for tabular data. It excels at handling mixed feature types—dense embeddings from DistilBERT combined with sparse, scalar features like readability scores—better than deep neural networks, which often struggle with unnormalized scalar inputs.27
+* Interpretability: Unlike a neural classification head, XGBoost provides native feature importance metrics (Gain, Cover). Crucially, it supports SHAP (SHapley Additive exPlanations) via the TreeExplainer API, which is mathematically optimized for tree ensembles. This allows us to calculate the exact contribution of every feature to a specific prediction in milliseconds.33
+
+
+4.2.3 The "SetFit" Strategy for Small Data
+
+
+A critical requirement is robustness to small data. Some teams in the NeoDataset or in production may have fewer than 50 historical stories. In these "few-shot" scenarios, training a robust classifier is difficult. To address this, we incorporate SetFit (Sentence Transformer Fine-tuning) as an adaptive component.
+* Mechanism: SetFit uses contrastive learning with a Siamese network structure. Instead of trying to classify stories directly, it learns to minimize the distance between similar stories and maximize the distance between dissimilar ones in the vector space. This technique has been proven to achieve high accuracy with as few as 8 labeled examples per class.6
+* Adaptability: The architectural pipeline will detect the sample size of the specific project. If $N > 100$, it utilizes the standard DistilBERT+XGBoost pipeline. If $N < 100$, it switches to the SetFit approach, fine-tuning the embeddings before passing them to a simpler head (like Logistic Regression or a lightweight XGBoost), ensuring the model remains robust even for new teams.
+
+
+5. Explainability (XAI): From Prediction to Insight
+
+
+The "Explainability Requirement" dictates that the PSA cannot simply output a probability; it must provide a justification. To achieve this, we implement a layered Explainable AI (XAI) strategy using SHAP and LIME.
+
+
+5.1 Global vs. Local Interpretability
+
+
+We must distinguish between explaining the model (Global) and explaining a prediction (Local).
+* Global Interpretability: This helps stakeholders trust the system overall. We use XGBoost's global feature importance plots to show, for example, that "Across all projects, the presence of 'Database Migration' keywords is the strongest predictor of risk." This confirms to domain experts that the model is learning valid patterns.35
+* Local Interpretability: This explains a specific user story's risk. When the PSA predicts "High Risk" for Story #1024, we must show why.
+
+
+5.2 SHAP (SHapley Additive exPlanations)
+
+
+SHAP is a game-theoretic approach that assigns a "credit" value to each feature for a specific prediction. Because we are using XGBoost, we can leverage the TreeExplainer, which computes exact Shapley values in polynomial time (extremely fast) compared to the exponential time required for model-agnostic kernel SHAP.33
+* Application: For a given prediction, SHAP might reveal:
+   * DistilBERT Dimension 42 (Semantic context of "Security"): +0.4 contribution to Risk.
+   * Gunning Fog Index (Readability): +0.3 contribution to Risk.
+   * Sentiment Score: -0.1 contribution (mitigating factor).
+* Narrative Generation: We map these SHAP values to natural language templates. The system output would read: "This story is rated High Risk primarily due to its linguistic complexity (Readability Score: Low) and semantic similarity to past security-related tasks."
+
+
+5.3 LIME and Attention Mechanisms for Text Highlighting
+
+
+While SHAP explains the features, stakeholders often want to see which words triggered the alarm.
+* LIME (Local Interpretable Model-agnostic Explanations): LIME works by perturbing the input text (randomly removing words) and observing how the prediction changes.4 It can generate a heatmap over the text, highlighting words like "Integration" or "Unknown" in red.
+* Latency Trade-off: LIME requires multiple inference passes, which can be slow (seconds). To maintain the < 1s constraint, we can use Integrated Gradients or simply visualize the Attention Weights from the DistilBERT `` token.36 Attention weights indicate which tokens the model focused on most heavily. While less causally precise than LIME, attention maps are "free" (computed during the forward pass) and instant, making them the superior choice for real-time highlighting.
+
+
+6. Operational Implementation Roadmap
+
+
+This section outlines the concrete steps to build the Proof of Concept (PoC).
+
+
+Phase 1: Data Ingestion and Target Engineering
+
+
+We begin by ingesting the issues.csv and raw JSON files from the NeoDataset. We perform stratified sampling based on idproject to ensure our validation set covers diverse team types.
+* Target Logic: We synthesize the Risk_Level variable. Based on the distribution of storypoints in the NeoDataset, we apply a bucketing strategy:
+   * Points $\le$ 3 $\rightarrow$ Low Risk
+   * Points > 3 and $\le$ 8 $\rightarrow$ Medium Risk
+   * Points > 8 $\rightarrow$ High Risk
+   * Refinement: If "Actual Time Spent" data is available in the JSON attributes, we override these buckets for stories where Actual Time >> Estimated Time (Sprint Spillover), marking them immediately as High Risk.
+
+
+Phase 2: The Feature Pipeline
+
+
+We construct a scikit-learn compatible pipeline that branches into two paths:
+1. Text Path: Input description $\rightarrow$ Tokenization $\rightarrow$ DistilBERT Inference $\rightarrow$ `` Vector (768 dimensions).
+2. Metadata Path: Input description $\rightarrow$ textstat (Readability) + vaderSentiment (Sentiment) + spacy (Modal Verb Count) $\rightarrow$ Symbolic Vector (~10 dimensions).
+These two vectors are concatenated into a single Feature Vector ($768 + 10 \approx 778$ dimensions).
+
+
+Phase 3: Model Training and Optimization
+
+
+* Training: We train the XGBoost classifier on the concatenated vectors. We use the multi:softprob objective function to output probabilities for Low, Medium, and High risk.
+* Quantization: To ensure the DistilBERT component meets the < 1s latency requirement on standard CPUs, we apply Dynamic Quantization. This converts the model weights from 32-bit floating-point numbers to 8-bit integers. Research shows this reduces model size by 4x and increases inference speed by 2-3x with negligible accuracy loss (< 1%).38
+* Caching: We implement an LRU (Least Recently Used) cache for the embeddings. If a user story title remains unchanged during a planning session (common during refinement), we do not need to re-compute the BERT embedding, further reducing latency to near-zero.
+
+
+Phase 4: Validation and "User Story Tutor" Integration
+
+
+The final phase involves integrating the model into a user interface. We draw inspiration from the "User Story Tutor" research, which suggests that feedback is most effective when it is educational.1 The PSA will not just display a red "High Risk" badge; it will use the SHAP/Attention outputs to offer corrective advice: "Consider breaking this story down. The ambiguity score is high due to vague terms like 'fast' and 'easy'." This closes the loop between prediction and process improvement.
+
+
+7. Conclusion
+
+
+The transition from intuition-based to data-driven risk management is a critical evolution for Agile software engineering. The proposed Probabilistic Story Assessor (PSA) leverages a Hybrid DistilBERT-XGBoost Architecture to meet the rigorous demands of modern development environments. By fusing the deep semantic understanding of distilled Transformers with the tabular speed and interpretability of XGBoost, the system achieves high accuracy without sacrificing the transparency required for stakeholder trust.
+Key recommendations for the PoC include:
+* Adopt the Hybrid Architecture: DistilBERT for embeddings + XGBoost for classification is the optimal Pareto frontier for Speed vs. Accuracy.
+* Operationalize "White Box" Features: Explicitly engineer readability and ambiguity metrics to provide human-readable justifications for risk.
+* Leverage Transfer Learning: Use pre-trained models to handle the linguistic heavy lifting, allowing the model to be robust even for teams with limited historical data in the NeoDataset.
+* Prioritize Latency: Use quantization and attention-based explanations to ensure the system feels "instant" during planning meetings.
+This approach transforms the PSA from a passive monitor into an active participant in the Agile process, guiding teams toward clearer, smaller, and less volatile user stories.
+Works cited
+1. User Story Tutor (UST) to Support Agile Software Developers - arXiv, accessed November 20, 2025, https://arxiv.org/html/2406.16259v1
+2. A thorough benchmark of automatic text classification From traditional approaches to large language models - arXiv, accessed November 20, 2025, https://arxiv.org/html/2504.01930v1
+3. An interpretable method for automated classification of spoken transcripts and written text - PMC - NIH, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10157555/
+4. Two minutes NLP — Explain predictions with LIME | by Fabio Chiusano | Generative AI, accessed November 20, 2025, https://medium.com/nlplanet/two-minutes-nlp-explain-predictions-with-lime-aec46c7c25a2
+5. Explainable AI for Forensic Analysis: A Comparative Study of SHAP and LIME in Intrusion Detection Models - MDPI, accessed November 20, 2025, https://www.mdpi.com/2076-3417/15/13/7329
+6. huggingface/setfit: Efficient few-shot learning with Sentence Transformers - GitHub, accessed November 20, 2025, https://github.com/huggingface/setfit
+7. User eXperience Perception Insights Dataset (UXPID): Synthetic User Feedback from Public Industrial Forums - arXiv, accessed November 20, 2025, https://arxiv.org/html/2509.11777v1
+8. giseldo/neodataset · Datasets at Hugging Face, accessed November 20, 2025, https://huggingface.co/datasets/giseldo/neodataset
+9. giseldo/userstory: UST - A tool to help teams that use agile practices to building better User Stories https://userstoryteach.streamlit.app - GitHub, accessed November 20, 2025, https://github.com/giseldo/userstory
+10. User Story NeoDataset - Mendeley Data, accessed November 20, 2025, https://data.mendeley.com/datasets/skk2wn9j86
+11. A Systematic Cycle Time Reduction Procedure for Enhancing the Competitiveness and Sustainability of a Semiconductor Manufacturer - MDPI, accessed November 20, 2025, https://www.mdpi.com/2071-1050/5/11/4637
+12. Understanding Development Velocity in Software Engineering - Entelligence AI, accessed November 20, 2025, https://entelligence.ai/blogs/understanding-development-velocity-software-performance
+13. 7 Metrics for Measuring Code Quality - Codacy | Blog, accessed November 20, 2025, https://blog.codacy.com/code-quality-metrics
+14. Synthetic Open-source Agile Software Estimation Performance - CEUR-WS.org, accessed November 20, 2025, https://ceur-ws.org/Vol-3845/paper07.pdf
+15. (PDF) A Risk Classification Scheme for Software Projects - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/262374646_A_Risk_Classification_Scheme_for_Software_Projects
+16. Explainable AI: A Review of Machine Learning Interpretability Methods - PMC - NIH, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC7824368/
+17. BERT based natural language processing for triage of adverse drug reaction reports shows close to human-level performance - PubMed Central, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10699587/
+18. The readability and narrative tone of risk and risk management disclosures for South African listed companies | Journal of Accounting in Emerging Economies | Emerald Publishing, accessed November 20, 2025, https://www.emerald.com/jaee/article/15/1/224/1244570/The-readability-and-narrative-tone-of-risk-and
+19. User Story Tutor (UST) to Support Agile Software Developers - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/380390313_User_Story_Tutor_UST_to_Support_Agile_Software_Developers
+20. Identifying Ambiguity Problems in User Stories : A Proposed Framework - CEUR-WS, accessed November 20, 2025, https://ceur-ws.org/Vol-3139/paper06.pdf
+21. (PDF) Detecting Terminological Ambiguity in User Stories: Tool and Experimentation, accessed November 20, 2025, https://www.researchgate.net/publication/329901590_Detecting_Terminological_Ambiguity_in_User_Stories_Tool_and_Experimentation
+22. Writing Better User Stories and Estimates Story Point with Machine Learning and Natural Language Processing | Request PDF - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/395455156_Writing_Better_User_Stories_and_Estimates_Story_Point_with_Machine_Learning_and_Natural_Language_Processing
+23. A sentiment analysis approach to the prediction of market volatility - PMC - NIH, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC9815756/
+24. A Sentiment Analysis Approach: Unlocking The Secret Of Hidden Volatility - Samco, accessed November 20, 2025, https://www.samco.in/knowledge-center/articles/a-sentiment-analysis-approach-unlocking-the-secret-of-hidden-volatility/
+25. Risk Management in Agile. How do we assess and respond to risks? | by Vibhor Chandel, accessed November 20, 2025, https://medium.com/agileinsider/risk-management-in-agile-how-do-we-assess-and-respond-to-risks-2857a17654da
+26. Evaluating the Performance of BERT, XGBoost, and Hybrid Models for Fake News Detection, accessed November 20, 2025, https://www.researchgate.net/publication/389499023_Evaluating_the_Performance_of_BERT_XGBoost_and_Hybrid_Models_for_Fake_News_Detection
+27. Enriching Tabular Data with Contextual LLM Embeddings: A Comprehensive Ablation Study for Ensemble Classifiers - arXiv, accessed November 20, 2025, https://arxiv.org/html/2411.01645v1
+28. Multi-dimensional patient acuity estimation with longitudinal EHR tokenization and flexible transformer networks - PMC - NIH, accessed November 20, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC9682245/
+29. Sentiment Analysis on Short Social Media Texts Using DistilBERT - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/392078457_Sentiment_Analysis_on_Short_Social_Media_Texts_Using_DistilBERT
+30. Improving Crisis Events Detection Using DistilBERT with Hunger Games Search Algorithm, accessed November 20, 2025, https://www.mdpi.com/2227-7390/10/3/447
+31. Select and deploy text classification models - Amazon SageMaker AI, accessed November 20, 2025, https://docs.aws.amazon.com/sagemaker/latest/dg/jumpstart-text-classification-deploy.html
+32. Running Large Transformer Models on Mobile and Edge Devices - Medium, accessed November 20, 2025, https://medium.com/@mtugrull/running-large-transformer-models-on-mobile-and-edge-devices-6a965093794b
+33. A Perspective on Explainable Artificial Intelligence Methods: SHAP and LIME - arXiv, accessed November 20, 2025, https://arxiv.org/html/2305.02012v3
+34. SetFit: Efficient Few-Shot Learning Without Prompts - Hugging Face, accessed November 20, 2025, https://huggingface.co/blog/setfit
+35. Combining Categorical and Numerical Features with Text in BERT - Chris McCormick, accessed November 20, 2025, https://mccormickml.com/2021/06/29/combining-categorical-numerical-features-with-bert/
+36. Attention Mechanism In Explainable AI - Meegle, accessed November 20, 2025, https://www.meegle.com/en_us/topics/attention-mechanism/attention-mechanism-in-explainable-ai
+37. Fake News Detection with Deep Learning: Insights from Multi-dimensional Model Analysis, accessed November 20, 2025, https://www.researchgate.net/publication/395047846_Fake_News_Detection_with_Deep_Learning_Insights_from_Multi-dimensional_Model_Analysis
+38. ViTA: A Vision Transformer Inference Accelerator for Edge Applications - ResearchGate, accessed November 20, 2025, https://www.researchgate.net/publication/372623530_ViTA_A_Vision_Transformer_Inference_Accelerator_for_Edge_Applications
+39. Category Page: Model Compression - OpenVINO™ Blog, accessed November 20, 2025, https://blog.openvino.ai/category/model-compression
