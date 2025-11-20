@@ -1,6 +1,6 @@
 """
 Machine Learning Risk Assessor
-Plug-and-play implementation for deep learning risk prediction.
+DistilBERT-XGBoost implementation with SHAP explainability.
 """
 import os
 from typing import List
@@ -10,100 +10,107 @@ from src.models.story import Story
 
 class MLRiskAssessor(RiskAssessorInterface):
     """
-    Machine Learning Risk Assessor - Plug-and-play implementation.
+    Hybrid DistilBERT-XGBoost Risk Assessor.
     
-    This class provides a standardized interface for integrating ML models
-    into SprintGuard. It implements the RiskAssessorInterface, ensuring
-    compatibility with the rest of the system.
-    
-    To implement:
-        1. Train your model on the augmented NeoDataset
-        2. Save the model to the specified model_path
-        3. Implement the model loading logic in __init__
-        4. Implement the prediction logic in assess()
-    
-    Example model types:
-        - TF-IDF + Logistic Regression
-        - BERT or other transformer models
-        - Custom deep learning architectures
+    Features:
+    - Neuro-symbolic architecture (neural + symbolic features)
+    - Real-time prediction with <1s latency
+    - SHAP-based explainability
+    - Similar story retrieval
     """
     
-    def __init__(self, historical_stories: List[Story], model_path: str = None):
+    def __init__(self, historical_stories: List[Story], model_dir: str = "models"):
         """
         Initialize ML Risk Assessor.
         
         Args:
-            historical_stories: List of historical stories (for reference/context)
-            model_path: Path to trained model file (e.g., 'models/risk_model.pkl')
+            historical_stories: List of historical stories
+            model_dir: Directory containing model artifacts
         """
         super().__init__(historical_stories)
-        self.model = None
-        self.model_path = model_path
+        self.model_dir = model_dir
+        self.predictor = None
+        self.retriever = None
         
-        # TODO: Load trained model when available
-        # Example implementation:
-        # if model_path and os.path.exists(model_path):
-        #     import joblib
-        #     self.model = joblib.load(model_path)
-        #     print(f"✓ Loaded ML model from {model_path}")
-        # else:
-        #     print(f"⚠ Model not found at {model_path}")
+        # Check if model exists
+        model_path = os.path.join(model_dir, 'xgboost_risk_model.json')
         
-        if model_path and os.path.exists(model_path):
-            print(f"✓ Model path configured: {model_path}")
-            # Model loading logic goes here
+        if os.path.exists(model_path):
+            print(f"✓ Model found at {model_dir}")
+            
+            # Load predictor and retriever
+            try:
+                from src.ml.risk_predictor import RiskPredictor
+                from src.ml.similarity_retriever import SimilarityRetriever
+                
+                self.predictor = RiskPredictor.load(model_dir, quantize_bert=True)
+                
+                # Initialize similarity retriever (reuses predictor's embedder)
+                if len(historical_stories) > 0:
+                    self.retriever = SimilarityRetriever(
+                        historical_stories,
+                        embedder=self.predictor.bert_embedder
+                    )
+                else:
+                    print("  ⚠ No historical stories for similarity retrieval")
+                    self.retriever = None
+                
+                print("✓ ML Risk Assessor ready")
+                
+            except Exception as e:
+                print(f"⚠ Error loading model: {e}")
+                print("  Using placeholder responses.")
+                self.predictor = None
+                self.retriever = None
         else:
-            print(f"⚠ ML model not yet trained. Using placeholder responses.")
-            print(f"  Expected model path: {model_path}")
+            print(f"⚠ ML model not found at {model_dir}")
+            print("  Please train the model first:")
+            print("  1. Run: python scripts/augment_neodataset.py")
+            print("  2. Run: python src/ml/train_risk_model.py")
+            self.predictor = None
+            self.retriever = None
     
     def assess(self, description: str) -> RiskResult:
         """
-        Assess risk using trained ML model.
+        Assess risk using DistilBERT-XGBoost model.
         
         Args:
             description: User story description text
             
         Returns:
-            RiskResult with risk level, confidence, and explanation
-        
-        TODO: Implement actual prediction logic
-        
-        Example implementation:
-        ```python
-        if self.model is None:
-            return self._placeholder_response()
-        
-        # Extract features
-        features = self.vectorizer.transform([description])
-        
-        # Get prediction
-        risk_prob = self.model.predict_proba(features)[0]
-        risk_label = self.model.predict(features)[0]
-        
-        # Map to risk levels
-        if risk_label == 1:  # RISK
-            risk_level = "High" if risk_prob[1] > 0.8 else "Medium"
-            confidence = risk_prob[1] * 100
-        else:  # SAFE
-            risk_level = "Low"
-            confidence = risk_prob[0] * 100
-        
-        return RiskResult(
-            risk_level=risk_level,
-            confidence=confidence,
-            explanation=f"ML model prediction based on {len(self.historical_stories)} historical stories."
-        )
-        ```
+            RiskResult with risk level, confidence, explanation, and similar stories
         """
-        if self.model is None:
+        if self.predictor is None:
             return self._placeholder_response()
         
-        # TODO: Implement actual model prediction
-        # This is where your deep learning model inference goes
-        raise NotImplementedError(
-            "ML model prediction logic to be implemented. "
-            "Please train a model on the augmented NeoDataset and implement this method."
-        )
+        try:
+            # Get prediction with explanation
+            risk_level, confidence, explanation = self.predictor.predict(
+                description,
+                explain=True
+            )
+            
+            # Find similar historical stories
+            similar_story_ids = []
+            if self.retriever is not None:
+                similar = self.retriever.find_similar(description, k=5, min_similarity=0.3)
+                similar_story_ids = [s['story_id'] for s in similar[:3]]  # Top 3
+            
+            return RiskResult(
+                risk_level=risk_level,
+                confidence=confidence,
+                explanation=explanation,
+                similar_stories=similar_story_ids
+            )
+            
+        except Exception as e:
+            # Graceful fallback on error
+            print(f"⚠ Prediction error: {e}")
+            return RiskResult(
+                risk_level="Medium",
+                confidence=50.0,
+                explanation=f"Error during prediction: {str(e)}"
+            )
     
     def _placeholder_response(self) -> RiskResult:
         """
@@ -124,7 +131,7 @@ class MLRiskAssessor(RiskAssessorInterface):
     
     def get_name(self) -> str:
         """Return the name of this risk assessment algorithm"""
-        if self.model is not None:
-            return f"MLRiskAssessor (Model: {os.path.basename(self.model_path)})"
+        if self.predictor is not None:
+            return "DistilBERT-XGBoost Risk Assessor"
         return "MLRiskAssessor (No model loaded)"
 

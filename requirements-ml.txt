@@ -1,0 +1,22 @@
+# ML Model Training and Inference Dependencies
+# Required for risk model training and serving
+# Install with: pip install -r requirements-ml.txt
+
+# First install augmentation dependencies
+-r requirements-augmentation.txt
+
+# Deep learning and transformers
+transformers==4.35.0
+torch==2.1.0
+
+# ML models and explainability
+xgboost==2.0.2
+shap==0.43.0
+
+# NLP and feature extraction
+textstat==0.7.3
+spacy==3.7.2
+
+# Note: After installation, download spaCy model:
+#   python -m spacy download en_core_web_sm
+

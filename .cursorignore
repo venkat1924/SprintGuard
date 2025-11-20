@@ -1,0 +1,37 @@
+# Cursor AI Context Ignore File
+# Files and directories to exclude from AI context
+
+# LLM context artifacts (keep but don't index)
+Context_and_info/Text_files/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Data files (can be large)
+data/neodataset/
+*.csv
+
+# Model artifacts (will be generated)
+models/
+*.pkl
+*.joblib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+

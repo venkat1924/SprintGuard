@@ -1,0 +1,17 @@
+# Data Augmentation Dependencies
+# Required for NeoDataset augmentation pipeline (scripts/augment_neodataset.py)
+# Install with: pip install -r requirements-augmentation.txt
+
+# Weak supervision and data quality
+snorkel==0.9.9
+cleanlab==2.6.0
+
+# Data processing
+datasets==2.14.0
+pandas==2.0.3
+numpy==1.24.3
+
+# ML utilities
+scikit-learn==1.3.0
+nltk==3.8.1
+

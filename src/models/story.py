@@ -11,32 +11,47 @@ class Story:
     Attributes:
         id: Unique identifier for the story
         description: Text description of the story
-        estimated_points: Initial story point estimate
-        actual_points: Actual story points (after completion)
-        days_to_complete: Number of days taken to complete
-        caused_spillover: Whether this story caused sprint spillover
-        risk_level: Historical risk classification (Low/Medium/High)
+        estimated_points: Initial story point estimate (may be None for NeoDataset)
+        actual_points: Actual story points after completion (may be None for NeoDataset)
+        days_to_complete: Number of days taken to complete (may be None for NeoDataset)
+        caused_spillover: Whether this story caused sprint spillover (may be None for NeoDataset)
+        risk_level: Historical risk classification (Low/Medium/High/SAFE/RISK)
         epic: Optional epic/category this story belongs to
         reporter: Optional person who created the story
+        
+    Note: NeoDataset does not provide actual_points, days_to_complete, or caused_spillover.
+          These fields will be None when loading from CSV.
     """
     id: int
     description: str
-    estimated_points: int
-    actual_points: int
-    days_to_complete: int
-    caused_spillover: bool
+    estimated_points: Optional[int]
+    actual_points: Optional[int]
+    days_to_complete: Optional[int]
+    caused_spillover: Optional[bool]
     risk_level: str
     epic: Optional[str] = None
     reporter: Optional[str] = None
     
-    def was_underestimated(self) -> bool:
-        """Returns True if actual effort exceeded estimate by 50%+"""
+    def was_underestimated(self) -> Optional[bool]:
+        """
+        Returns True if actual effort exceeded estimate by 50%+
+        Returns None if actual_points or estimated_points are not available
+        """
+        if self.actual_points is None or self.estimated_points is None:
+            return None
+        if self.estimated_points == 0:
+            return None
         return self.actual_points > self.estimated_points * 1.5
     
-    def estimation_accuracy(self) -> float:
-        """Returns ratio of actual to estimated points (1.0 = perfect)"""
+    def estimation_accuracy(self) -> Optional[float]:
+        """
+        Returns ratio of actual to estimated points (1.0 = perfect)
+        Returns None if actual_points or estimated_points are not available
+        """
+        if self.actual_points is None or self.estimated_points is None:
+            return None
         if self.estimated_points == 0:
-            return 0.0
+            return None
         return self.actual_points / self.estimated_points
     
     def to_dict(self) -> dict:
