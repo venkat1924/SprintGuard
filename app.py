@@ -60,17 +60,34 @@ def health_check():
     Analyzes the quality and quantity of historical data.
     Returns scores and recommendations for data improvement.
     """
+    import time
+    from datetime import datetime
+    
+    request_start = time.time()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"\n[API] {timestamp} - GET /api/health-check")
+    print(f"  Remote: {request.remote_addr}")
+    
     try:
         # Get all historical stories
         stories = data_loader.get_all_stories()
+        print(f"  Analyzing {len(stories)} stories...")
         
         # Perform health check
         checker = HealthChecker(stories)
         result = checker.assess()
         
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✓ Health score: {result.health_score:.1f}")
+        print(f"  ✓ Time: {request_time:.1f}ms")
+        
         return jsonify(format_success(result.to_dict()))
     
     except Exception as e:
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✗ ERROR: {str(e)}")
+        print(f"  Time: {request_time:.1f}ms")
         return jsonify(format_error(f"Health check failed: {str(e)}", 500))
 
 
@@ -95,27 +112,52 @@ def assess_risk():
             }
         }
     """
+    import time
+    from datetime import datetime
+    
+    request_start = time.time()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"\n[API] {timestamp} - POST /api/assess-risk")
+    print(f"  Remote: {request.remote_addr}")
+    
     try:
         # Validate request
         data = request.get_json()
         
         if not data or 'description' not in data:
+            print(f"  ✗ Validation error: Missing 'description' field")
             return jsonify(format_error("Missing 'description' field in request body"))
         
         description = data['description'].strip()
         
         if not description:
+            print(f"  ✗ Validation error: Empty description")
             return jsonify(format_error("Description cannot be empty"))
         
         if len(description) < 3:
+            print(f"  ✗ Validation error: Description too short ({len(description)} chars)")
             return jsonify(format_error("Description is too short (minimum 3 characters)"))
         
+        print(f"  Request: '{description[:50]}{'...' if len(description) > 50 else ''}'")
+        print(f"  Length: {len(description)} characters")
+        
         # Perform risk assessment
+        assess_start = time.time()
         result = risk_assessor.assess(description)
+        assess_time = (time.time() - assess_start) * 1000
+        
+        request_time = (time.time() - request_start) * 1000
+        
+        print(f"  ✓ Assessment: {result.risk_level} ({result.confidence:.1f}%)")
+        print(f"  ✓ Time: {request_time:.1f}ms (assessment: {assess_time:.1f}ms)")
         
         return jsonify(format_success(result.to_dict()))
     
     except Exception as e:
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✗ ERROR: {str(e)}")
+        print(f"  Time: {request_time:.1f}ms")
         return jsonify(format_error(f"Risk assessment failed: {str(e)}", 500))
 
 
@@ -144,11 +186,21 @@ def simulate_scope():
             }
         }
     """
+    import time
+    from datetime import datetime
+    
+    request_start = time.time()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"\n[API] {timestamp} - POST /api/simulate-scope")
+    print(f"  Remote: {request.remote_addr}")
+    
     try:
         # Validate request
         data = request.get_json()
         
         if not data:
+            print(f"  ✗ Validation error: Missing request body")
             return jsonify(format_error("Request body is required"))
         
         # Required fields
@@ -156,6 +208,7 @@ def simulate_scope():
         missing_fields = [f for f in required_fields if f not in data]
         
         if missing_fields:
+            print(f"  ✗ Validation error: Missing fields {missing_fields}")
             return jsonify(format_error(
                 f"Missing required fields: {', '.join(missing_fields)}"
             ))
@@ -165,9 +218,11 @@ def simulate_scope():
             current_points = int(data['current_story_points'])
             new_points = int(data['new_story_points'])
         except ValueError:
+            print(f"  ✗ Validation error: Invalid story points")
             return jsonify(format_error("Story points must be integers"))
         
         if current_points < 0 or new_points < 1:
+            print(f"  ✗ Validation error: Invalid point values")
             return jsonify(format_error(
                 "Current points must be >= 0 and new points must be >= 1"
             ))
@@ -177,10 +232,14 @@ def simulate_scope():
         try:
             velocity = float(velocity)
         except ValueError:
+            print(f"  ✗ Validation error: Invalid velocity")
             return jsonify(format_error("Team velocity must be a number"))
         
         if velocity <= 0:
+            print(f"  ✗ Validation error: Velocity must be positive")
             return jsonify(format_error("Team velocity must be greater than 0"))
+        
+        print(f"  Request: current={current_points}SP, new={new_points}SP, velocity={velocity}")
         
         # Perform simulation
         result = scope_simulator.simulate_scope_addition(
@@ -190,11 +249,21 @@ def simulate_scope():
             team_velocity=velocity
         )
         
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✓ Simulation: {result.days_added} days added")
+        print(f"  ✓ Time: {request_time:.1f}ms")
+        
         return jsonify(format_success(result.to_dict()))
     
     except ValueError as e:
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✗ ERROR: Invalid date format - {str(e)}")
+        print(f"  Time: {request_time:.1f}ms")
         return jsonify(format_error(f"Invalid date format: {str(e)}"))
     except Exception as e:
+        request_time = (time.time() - request_start) * 1000
+        print(f"  ✗ ERROR: {str(e)}")
+        print(f"  Time: {request_time:.1f}ms")
         return jsonify(format_error(f"Simulation failed: {str(e)}", 500))
 
 

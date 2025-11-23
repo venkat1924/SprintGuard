@@ -35,6 +35,9 @@ class CSVDataLoader:
     
     def _load_data(self):
         """Load data from CSV file"""
+        print(f"\n[DATA LOADER] Loading augmented NeoDataset...")
+        print(f"  Path: {self.csv_path}")
+        
         if not os.path.exists(self.csv_path):
             raise FileNotFoundError(
                 f"\n{'='*70}\n"
@@ -46,8 +49,51 @@ class CSVDataLoader:
                 f"{'='*70}\n"
             )
         
-        self._df = pd.read_csv(self.csv_path)
-        print(f"✓ Loaded {len(self._df)} stories from {os.path.basename(self.csv_path)}")
+        try:
+            self._df = pd.read_csv(self.csv_path)
+            print(f"  ✓ Loaded {len(self._df)} stories")
+            print(f"  ✓ Columns: {len(self._df.columns)}")
+            
+            # Validate schema
+            print(f"\n[VALIDATION] Checking data schema...")
+            required_cols = ['id', 'description', 'risk_label']
+            missing_cols = [col for col in required_cols if col not in self._df.columns]
+            if missing_cols:
+                print(f"  ⚠ Warning: Missing columns: {missing_cols}")
+            else:
+                print(f"  ✓ Required columns present")
+            
+            # Check risk_label values
+            if 'risk_label' in self._df.columns:
+                unique_labels = self._df['risk_label'].unique()
+                label_counts = self._df['risk_label'].value_counts()
+                
+                print(f"\n[LABELS] Risk label distribution:")
+                for label in sorted(unique_labels):
+                    count = label_counts.get(label, 0)
+                    print(f"  {label}: {count} ({count/len(self._df)*100:.1f}%)")
+                
+                # Warn about unexpected labels
+                expected_binary = {'SAFE', 'RISK'}
+                expected_3class = {'Low', 'Medium', 'High'}
+                
+                if set(unique_labels).issubset(expected_binary):
+                    print(f"  ℹ Using binary labels (SAFE/RISK)")
+                elif set(unique_labels).issubset(expected_3class):
+                    print(f"  ℹ Using 3-class labels (Low/Medium/High)")
+                else:
+                    print(f"  ⚠ Warning: Unexpected risk_label values: {unique_labels}")
+            
+            # Check for story_points
+            if 'story_points' in self._df.columns:
+                has_points = self._df['story_points'].notna().sum()
+                print(f"\n[STORY POINTS] {has_points}/{len(self._df)} stories have story_points")
+            
+            print(f"\n✓ Data loaded successfully: {os.path.basename(self.csv_path)}")
+            
+        except Exception as e:
+            print(f"\n✗ ERROR: Failed to load data: {e}")
+            raise
     
     def _row_to_story(self, row) -> Story:
         """Convert CSV row (pandas Series) to Story object"""

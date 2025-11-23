@@ -5,38 +5,46 @@
 
 ---
 
-## 🚨 CRITICAL COMPATIBILITY ISSUE 🚨
+## ✅ COMPATIBILITY ISSUE RESOLVED
 
-**BLOCKER FOUND**: There is a mismatch between the augmentation pipeline output and ML training script input:
+**Previous Issue**: Mismatch between augmentation output (SAFE/RISK) and training input (Low/Medium/High)
 
-- **Augmentation Output**: Binary labels (`'SAFE'` or `'RISK'`)
-- **Training Script Expects**: 3-class labels (`'Low'`, `'Medium'`, `'High'`)
+**Solution Implemented**: Post-augmentation mapping script (`scripts/map_to_3class.py`)
 
-**Impact**: The training script will FAIL when trying to map labels:
+- **Stage 3 Output**: Binary labels (`'SAFE'` or `'RISK'`)
+- **Mapping Step** (Stage 3.5): Converts to 3-class labels
+- **Training Input**: 3-class labels (`'Low'`, `'Medium'`, `'High'`)
+
+**Mapping Logic**:
 ```python
-label_map = {'Low': 0, 'Medium': 1, 'High': 2}
-df['risk_class'] = df['risk_label'].map(label_map)  # Will produce NaN values!
+if risk_label == 'SAFE':
+    new_label = 'Low'
+elif risk_label == 'RISK' and risk_confidence > 0.85:
+    new_label = 'High'
+else:  # RISK with confidence ≤ 0.85
+    new_label = 'Medium'
 ```
 
-**Fix Required Before Training**:
-1. **Option A**: Modify augmentation to output 3-class labels (requires new labeling functions)
-2. **Option B**: Modify training script to work with binary labels ('SAFE'/'RISK' → 0/1)
-3. **Option C**: Add a post-augmentation step to map SAFE→Low, RISK→High
-
-**Recommended**: Option B (simplify to binary classification)
+**Benefits**:
+- ✅ No changes to Snorkel labeling functions needed
+- ✅ Binary labels preserved for reference
+- ✅ 3-class labels available for training
+- ✅ Easy to switch back to binary classification if needed
 
 ---
 
 ## Overview
 
-SprintGuard follows a 4-stage pipeline:
+SprintGuard follows a 5-stage pipeline:
 
 ```
 Stage 1: NeoDataset Download → Preprocessed DataFrame
          ↓
-Stage 2: Weak Supervision (Snorkel) → Labeled DataFrame
+Stage 2: Weak Supervision (Snorkel) → Labeled DataFrame (Binary: SAFE/RISK)
          ↓
-Stage 3: Noise Filtering (Cleanlab) → Clean Augmented Dataset
+Stage 3: Noise Filtering (Cleanlab) → Clean Augmented Dataset (Binary labels)
+         ↓
+Stage 3.5: Label Mapping → 3-Class Labels (Low/Medium/High)
          ↓
 Stage 4: ML Model Training → Trained Model Artifacts
          ↓
@@ -208,6 +216,92 @@ Final label distribution:
 SAFE    11,234 (59.8%)
 RISK     7,531 (40.2%)
 ```
+
+---
+
+## Stage 3.5: Label Mapping (Binary → 3-Class)
+
+### Purpose
+Convert binary SAFE/RISK labels to 3-class Low/Medium/High labels for granular risk assessment.
+
+### Commands
+```bash
+# Run mapping script (auto-called by augment_neodataset.py)
+python scripts/map_to_3class.py
+
+# Or with custom paths
+python scripts/map_to_3class.py --input data/neodataset_augmented.csv --output data/neodataset_augmented_3class.csv
+```
+
+### What Happens
+**File**: `scripts/map_to_3class.py`
+
+1. **Validates input data**
+   - Checks for required columns: risk_label, risk_confidence
+   - Verifies risk_label values are SAFE or RISK
+   - Validates risk_confidence range [0, 1]
+
+2. **Maps labels based on confidence**
+   ```python
+   if risk_label == 'SAFE':
+       new_label = 'Low'      # All SAFE stories → Low risk
+   elif risk_confidence > 0.85:
+       new_label = 'High'     # High-confidence RISK → High risk
+   else:
+       new_label = 'Medium'   # Lower-confidence RISK → Medium risk
+   ```
+
+3. **Validates output data**
+   - Confirms all labels are Low, Medium, or High
+   - Logs label distribution statistics
+
+4. **Processes high-confidence subset**
+   - Automatically processes `_high_confidence.csv` variant if exists
+
+### Outputs
+**Two CSV pairs**:
+
+#### 1. Full Dataset
+**File**: `data/neodataset_augmented_3class.csv`
+- All clean stories with 3-class labels
+- ~18,000 stories
+- Ready for training
+
+#### 2. High-Confidence Subset
+**File**: `data/neodataset_augmented_3class_high_confidence.csv`
+- Stories with risk_confidence > 0.75
+- ~12,000 stories
+- Recommended for training
+
+### Expected Output
+```
+Total stories processed: 18,765
+Labels before mapping:
+  SAFE: 11,234 (59.8%)
+  RISK:  7,531 (40.2%)
+
+Labels after mapping:
+  Low:    11,234 (59.8%)
+  Medium:  2,120 (11.3%)
+  High:    5,411 (28.8%)
+```
+
+### Mapping Rationale
+- **Low risk**: All SAFE stories (no delivery issues expected)
+- **Medium risk**: RISK stories with lower confidence (potential issues, uncertain)
+- **High risk**: RISK stories with high confidence (likely delivery issues)
+
+**Confidence threshold of 0.85** chosen to balance:
+- Enough High risk examples for training
+- Conservative Medium risk category for uncertain cases
+
+### Validation
+The script performs comprehensive validation:
+- ✅ Input schema validation
+- ✅ Label value validation
+- ✅ Confidence range validation
+- ✅ Output label verification
+- ✅ Distribution statistics logging
 
 ---
 
@@ -706,23 +800,28 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements-augmentation.txt
 
-# 2. Download and augment NeoDataset
+# 2. Download and augment NeoDataset (includes mapping step)
 python scripts/augment_neodataset.py
-# Output: data/neodataset_augmented.csv
-#         data/neodataset_augmented_high_confidence.csv
+# This script now runs all 4 stages automatically:
+#   - Stage 1: Download & Preprocess
+#   - Stage 2: Weak Supervision (Snorkel)
+#   - Stage 3: Noise Filtering (Cleanlab)
+#   - Stage 3.5: Label Mapping (Binary → 3-Class)
+#
+# Output: data/neodataset_augmented.csv (binary labels)
+#         data/neodataset_augmented_high_confidence.csv (binary)
+#         data/neodataset_augmented_3class.csv (3-class labels)
+#         data/neodataset_augmented_3class_high_confidence.csv (3-class)
 
-# 3. ⚠️ FIX COMPATIBILITY ISSUE (choose one):
-# Option B (Recommended): Edit src/ml/train_risk_model.py and risk_predictor.py
-# OR
-# Option C: Run mapping script (create it first)
-# python scripts/map_to_3class.py
+# 3. (Optional) Verify pipeline integrity
+python scripts/verify_pipeline.py
 
 # 4. Install ML dependencies
 pip install -r requirements-ml.txt
 python -m spacy download en_core_web_sm
 
-# 5. Train ML model
-python src/ml/train_risk_model.py
+# 5. Train ML model on 3-class data
+python src/ml/train_risk_model.py --data data/neodataset_augmented_3class.csv
 # Output: models/xgboost_risk_model.json
 #         models/feature_scaler.pkl
 #         models/feature_names.json
@@ -732,8 +831,8 @@ python src/ml/train_risk_model.py
 python -c "
 from src.ml.risk_predictor import RiskPredictor
 predictor = RiskPredictor.load('models', quantize_bert=True)
-result = predictor.predict('Implement complex authentication system')
-print(f'Risk: {result[\"risk_level\"]} ({result[\"confidence\"]:.1f}%)')
+risk_level, confidence, explanation = predictor.predict('Implement complex authentication system')
+print(f'Risk: {risk_level} ({confidence:.1f}%)')
 "
 
 # 7. Start Flask API (new terminal, same venv)
@@ -855,11 +954,55 @@ data/
 
 ## Next Steps
 
-1. **URGENT**: Fix label compatibility issue (recommend Option B)
-2. Run augmentation pipeline: `python scripts/augment_neodataset.py`
-3. Verify outputs: Check `data/neodataset_augmented.csv` has correct columns
-4. Train model: `python src/ml/train_risk_model.py`
+1. ✅ **RESOLVED**: Label compatibility issue fixed with mapping script
+2. Run complete augmentation pipeline: `python scripts/augment_neodataset.py`
+3. Verify pipeline integrity: `python scripts/verify_pipeline.py`
+4. Train model on 3-class data: `python src/ml/train_risk_model.py --data data/neodataset_augmented_3class.csv`
 5. Test API: `python app.py`
 6. (Optional) Create validation set for manual label quality check
 7. (Optional) Fine-tune hyperparameters based on test set performance
+8. (Optional) Switch to binary classification by training on `data/neodataset_augmented.csv` instead
+
+## Comprehensive Logging
+
+All pipeline stages now include extensive logging for:
+- **Progress tracking**: Real-time updates on each operation
+- **Validation**: Schema and data quality checks at stage boundaries
+- **Statistics**: Data distributions, counts, and metrics
+- **Timing**: Performance metrics for slow operations
+- **Error handling**: Detailed error messages with context
+- **Debugging**: API request/response logging with timestamps
+
+### Log Prefixes
+- `[STAGE X]`: Major pipeline stage
+- `[VALIDATION]`: Schema and data validation
+- `[ERROR]`: Error conditions
+- `[PREDICT]`: ML model predictions
+- `[API]`: HTTP API requests
+
+### Verification Utility
+Run `python scripts/verify_pipeline.py` to check:
+- ✓ All required files exist
+- ✓ Data schemas are compatible between stages
+- ✓ Labels are in correct format
+- ✓ Model artifacts are loadable
+
+
+# 1. Clone the repo
+git clone <your-repo-url>
+cd SprintGuard
+
+# 2. Install dependencies
+pip install -r requirements-augmentation.txt
+pip install -r requirements-ml.txt
+python -m spacy download en_core_web_sm
+
+# 3. Run augmentation pipeline (~5-10 minutes)
+python scripts/augment_neodataset.py
+
+# 4. Train model (~30-60 minutes on GPU)
+python src/ml/train_risk_model.py --data data/neodataset_augmented_3class.csv
+
+# 5. View results
+mlflow ui  # Open http://localhost:5000
 

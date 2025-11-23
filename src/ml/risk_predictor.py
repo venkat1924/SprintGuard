@@ -43,28 +43,43 @@ class RiskPredictor:
         """
         self.model_dir = model_dir
         
-        print(f"Loading RiskPredictor from {model_dir}...")
+        print(f"\n[RISK PREDICTOR] Loading model from {model_dir}...")
+        print(f"  Quantized BERT: {quantize_bert}")
         
         # Load feature extractors
+        print(f"\n[EXTRACTORS] Initializing feature extractors...")
         self.symbolic_extractor = SymbolicFeatureExtractor()
+        print(f"  ✓ Symbolic extractor ready ({len(self.symbolic_extractor.get_feature_names())} features)")
+        
         self.bert_embedder = BertEmbedder(quantize=quantize_bert, cache_size=1000)
+        print(f"  ✓ BERT embedder ready (cache size: 1000)")
         
         # Load scaler
+        print(f"\n[SCALER] Loading feature scaler...")
         scaler_path = os.path.join(model_dir, 'feature_scaler.pkl')
+        if not os.path.exists(scaler_path):
+            raise FileNotFoundError(f"Scaler not found: {scaler_path}")
         self.scaler = joblib.load(scaler_path)
-        print(f"  ✓ Loaded scaler")
+        print(f"  ✓ Loaded scaler from {scaler_path}")
         
         # Load feature names
+        print(f"\n[FEATURES] Loading feature names...")
         feature_names_path = os.path.join(model_dir, 'feature_names.json')
+        if not os.path.exists(feature_names_path):
+            raise FileNotFoundError(f"Feature names not found: {feature_names_path}")
         with open(feature_names_path, 'r') as f:
             self.feature_names = json.load(f)
         print(f"  ✓ Loaded {len(self.feature_names)} feature names")
         
         # Load XGBoost model
+        print(f"\n[MODEL] Loading XGBoost model...")
         model_path = os.path.join(model_dir, 'xgboost_risk_model.json')
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model not found: {model_path}")
         self.model = xgb.Booster()
         self.model.load_model(model_path)
-        print(f"  ✓ Loaded XGBoost model")
+        print(f"  ✓ Loaded XGBoost model from {model_path}")
+        print(f"  ✓ Model has {self.model.num_features()} features")
         
         # Load calibrator (if available)
         calibrator_path = os.path.join(model_dir, 'calibrator.pkl')
@@ -131,22 +146,35 @@ class RiskPredictor:
         Returns:
             Tuple of (risk_level, confidence, explanation)
         """
+        import time
+        
         # Check cache for explanation
         text_hash = hash(text)
-        if not explain and text_hash in self._explanation_cache:
+        if text_hash in self._explanation_cache:
+            print(f"[PREDICT] Cache hit for text hash {text_hash}")
             cached = self._explanation_cache[text_hash]
             return cached['risk_level'], cached['confidence'], cached['explanation']
         
+        print(f"[PREDICT] Processing new prediction...")
+        print(f"  Text length: {len(text)} characters")
+        
         # Extract features
+        feature_start = time.time()
         X = self.extract_features(text)
+        feature_time = (time.time() - feature_start) * 1000
+        print(f"  ✓ Feature extraction: {feature_time:.1f}ms")
         
         # XGBoost prediction
+        predict_start = time.time()
         dmatrix = xgb.DMatrix(X, feature_names=self.feature_names)
         raw_proba = self.model.predict(dmatrix)[0]  # (3,)
+        predict_time = (time.time() - predict_start) * 1000
+        print(f"  ✓ Model inference: {predict_time:.1f}ms")
         
         # Apply calibration
         if self.calibrator is not None:
             proba = self.calibrator.predict_proba(raw_proba.reshape(1, -1))[0]
+            print(f"  ✓ Applied probability calibration")
         else:
             proba = raw_proba
         
@@ -157,10 +185,16 @@ class RiskPredictor:
         # Confidence (probability of predicted class)
         confidence = proba[risk_class] * 100
         
+        print(f"  ✓ Prediction: {risk_level} ({confidence:.1f}% confidence)")
+        print(f"    Probabilities: Low={proba[0]*100:.1f}%, Medium={proba[1]*100:.1f}%, High={proba[2]*100:.1f}%")
+        
         # Generate explanation
         explanation = None
         if explain:
+            explain_start = time.time()
             explanation = self._generate_explanation(X, proba, risk_level)
+            explain_time = (time.time() - explain_start) * 1000
+            print(f"  ✓ Generated explanation: {explain_time:.1f}ms")
         
         # Cache result
         self._explanation_cache[text_hash] = {
@@ -168,6 +202,9 @@ class RiskPredictor:
             'confidence': confidence,
             'explanation': explanation
         }
+        
+        total_time = feature_time + predict_time + (explain_time if explain else 0)
+        print(f"  ✓ Total prediction time: {total_time:.1f}ms")
         
         return risk_level, confidence, explanation
     
