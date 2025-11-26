@@ -105,8 +105,8 @@ class XGBoostConfig:
     eta: float = 0.05  # Learning rate (lower = more robust)
     
     # Training
-    num_boost_round: int = 10  # Max boosting rounds (set to 500 for production)
-    early_stopping_rounds: int = 5  # Stop if no improvement
+    num_boost_round: int = 3000  # Max boosting rounds (set to 500 for production)
+    early_stopping_rounds: int = 125  # Stop if no improvement
     
     # Evaluation
     eval_metric: str = "mlogloss"

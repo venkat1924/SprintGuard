@@ -452,3 +452,923 @@ def generate_tsne_embeddings(
     
     return fig
 
+
+def generate_confusion_matrix_heatmap(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/confusion_matrix.pdf",
+    normalize: bool = True
+):
+    """
+    Generate publication-quality confusion matrix heatmap.
+    
+    Args:
+        y_true: True class labels
+        y_pred: Predicted class labels
+        class_names: Names for each class (default: ['Low', 'Medium', 'High'])
+        output_path: Where to save the figure
+        normalize: Whether to show percentages (True) or counts (False)
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info("[PLOTS] Generating confusion matrix heatmap...")
+    
+    from sklearn.metrics import confusion_matrix
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    
+    if normalize:
+        cm_display = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+        fmt = '.1f'
+        cbar_label = 'Percentage (%)'
+    else:
+        cm_display = cm
+        fmt = 'd'
+        cbar_label = 'Count'
+    
+    logging.info(f"  Confusion matrix shape: {cm.shape}")
+    logging.info(f"  Overall accuracy: {np.trace(cm) / cm.sum() * 100:.1f}%")
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(6, 5))
+    
+    # Generate heatmap
+    sns.heatmap(
+        cm_display,
+        ax=ax,
+        annot=True,
+        fmt=fmt,
+        cmap='Blues',
+        square=True,
+        linewidths=0.5,
+        cbar_kws={'label': cbar_label, 'shrink': 0.8},
+        xticklabels=class_names,
+        yticklabels=class_names
+    )
+    
+    # Customize
+    ax.set_xlabel('Predicted Label', fontsize=11)
+    ax.set_ylabel('True Label', fontsize=11)
+    ax.set_title('Confusion Matrix', fontsize=12, pad=10)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved confusion matrix to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_roc_curves(
+    y_true: np.ndarray,
+    y_pred_proba: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/roc_curves.pdf"
+):
+    """
+    Generate ROC curves for multi-class classification (one-vs-rest).
+    
+    Args:
+        y_true: True class labels
+        y_pred_proba: Predicted probabilities (n_samples × n_classes)
+        class_names: Names for each class
+        output_path: Where to save the figure
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info("[PLOTS] Generating ROC curves...")
+    
+    from sklearn.metrics import roc_curve, auc
+    from sklearn.preprocessing import label_binarize
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    n_classes = len(class_names)
+    
+    # Binarize labels for one-vs-rest
+    y_true_bin = label_binarize(y_true, classes=list(range(n_classes)))
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(6, 5))
+    
+    # Colorblind-friendly colors
+    colors = ['#0173B2', '#DE8F05', '#CC78BC']
+    
+    # Plot ROC curve for each class
+    for class_idx in range(n_classes):
+        fpr, tpr, _ = roc_curve(y_true_bin[:, class_idx], y_pred_proba[:, class_idx])
+        roc_auc = auc(fpr, tpr)
+        
+        ax.plot(
+            fpr, tpr,
+            color=colors[class_idx % len(colors)],
+            linewidth=2,
+            label=f'{class_names[class_idx]} (AUC = {roc_auc:.3f})'
+        )
+        
+        logging.info(f"  {class_names[class_idx]}: AUC = {roc_auc:.3f}")
+    
+    # Diagonal reference line
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1.5, alpha=0.7, label='Random Classifier')
+    
+    # Customize
+    ax.set_xlabel('False Positive Rate', fontsize=11)
+    ax.set_ylabel('True Positive Rate', fontsize=11)
+    ax.set_title('ROC Curves (One-vs-Rest)', fontsize=12, pad=10)
+    ax.legend(loc='lower right', frameon=True, fontsize=9)
+    ax.grid(alpha=0.3, linestyle='--')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1.02])
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved ROC curves to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_precision_recall_curves(
+    y_true: np.ndarray,
+    y_pred_proba: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/precision_recall_curves.pdf"
+):
+    """
+    Generate Precision-Recall curves for multi-class classification.
+    
+    Important for imbalanced datasets where ROC can be misleading.
+    
+    Args:
+        y_true: True class labels
+        y_pred_proba: Predicted probabilities (n_samples × n_classes)
+        class_names: Names for each class
+        output_path: Where to save the figure
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info("[PLOTS] Generating Precision-Recall curves...")
+    
+    from sklearn.metrics import precision_recall_curve, average_precision_score
+    from sklearn.preprocessing import label_binarize
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    n_classes = len(class_names)
+    
+    # Binarize labels for one-vs-rest
+    y_true_bin = label_binarize(y_true, classes=list(range(n_classes)))
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(6, 5))
+    
+    # Colorblind-friendly colors
+    colors = ['#0173B2', '#DE8F05', '#CC78BC']
+    
+    # Plot PR curve for each class
+    for class_idx in range(n_classes):
+        precision, recall, _ = precision_recall_curve(
+            y_true_bin[:, class_idx], 
+            y_pred_proba[:, class_idx]
+        )
+        ap = average_precision_score(y_true_bin[:, class_idx], y_pred_proba[:, class_idx])
+        
+        ax.plot(
+            recall, precision,
+            color=colors[class_idx % len(colors)],
+            linewidth=2,
+            label=f'{class_names[class_idx]} (AP = {ap:.3f})'
+        )
+        
+        logging.info(f"  {class_names[class_idx]}: AP = {ap:.3f}")
+    
+    # Customize
+    ax.set_xlabel('Recall', fontsize=11)
+    ax.set_ylabel('Precision', fontsize=11)
+    ax.set_title('Precision-Recall Curves', fontsize=12, pad=10)
+    ax.legend(loc='lower left', frameon=True, fontsize=9)
+    ax.grid(alpha=0.3, linestyle='--')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1.02])
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved Precision-Recall curves to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_feature_importance_plot(
+    model,
+    feature_names: List[str],
+    output_path: str = "visualizations/feature_importance.pdf",
+    top_k: int = 20,
+    importance_type: str = 'gain'
+):
+    """
+    Generate feature importance bar chart from XGBoost model.
+    
+    Args:
+        model: Trained XGBoost model
+        feature_names: List of feature names
+        output_path: Where to save the figure
+        top_k: Number of top features to show
+        importance_type: Type of importance ('gain', 'weight', 'cover')
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info(f"[PLOTS] Generating feature importance plot (top {top_k})...")
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    # Get feature importance scores
+    importance_dict = model.get_score(importance_type=importance_type)
+    
+    # Map feature indices to names and sort
+    importance_scores = []
+    for fname in feature_names:
+        score = importance_dict.get(fname, 0)
+        importance_scores.append((fname, score))
+    
+    # Sort by importance and take top k
+    importance_scores.sort(key=lambda x: x[1], reverse=True)
+    top_features = importance_scores[:top_k]
+    
+    names = [f[0] for f in top_features]
+    scores = [f[1] for f in top_features]
+    
+    logging.info(f"  Top 5 features:")
+    for name, score in top_features[:5]:
+        logging.info(f"    {name}: {score:.4f}")
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Horizontal bar chart
+    y_pos = np.arange(len(names))
+    
+    # Color symbolic features differently from embeddings
+    colors = ['#D62728' if not name.startswith('embedding_') else '#1F77B4' for name in names]
+    
+    ax.barh(y_pos, scores, color=colors, edgecolor='black', linewidth=0.5, alpha=0.8)
+    
+    # Customize
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names, fontsize=8)
+    ax.invert_yaxis()  # Top feature at top
+    ax.set_xlabel(f'Importance ({importance_type})', fontsize=11)
+    ax.set_title(f'Top {top_k} Feature Importance', fontsize=12, pad=10)
+    ax.grid(axis='x', alpha=0.3, linestyle='--')
+    
+    # Legend for feature types
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#D62728', edgecolor='black', label='Symbolic Features'),
+        Patch(facecolor='#1F77B4', edgecolor='black', label='BERT Embeddings')
+    ]
+    ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved feature importance to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_learning_curves(
+    evals_result: Dict[str, Dict[str, List[float]]],
+    output_path: str = "visualizations/learning_curves.pdf"
+):
+    """
+    Generate learning curves showing training and validation loss over boosting rounds.
+    
+    Args:
+        evals_result: Dictionary from XGBoost training with format:
+                     {'train': {'mlogloss': [...]}, 'val': {'mlogloss': [...]}}
+        output_path: Where to save the figure
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info("[PLOTS] Generating learning curves...")
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(7, 5))
+    
+    # Get metric name (usually 'mlogloss' for multi-class)
+    metric_name = list(evals_result.get('train', {}).keys())[0] if evals_result.get('train') else 'mlogloss'
+    
+    train_scores = evals_result.get('train', {}).get(metric_name, [])
+    val_scores = evals_result.get('val', {}).get(metric_name, [])
+    
+    rounds = list(range(1, len(train_scores) + 1))
+    
+    logging.info(f"  Metric: {metric_name}")
+    logging.info(f"  Rounds: {len(rounds)}")
+    logging.info(f"  Final train loss: {train_scores[-1]:.4f}" if train_scores else "  No train data")
+    logging.info(f"  Final val loss: {val_scores[-1]:.4f}" if val_scores else "  No val data")
+    
+    # Plot curves
+    if train_scores:
+        ax.plot(rounds, train_scores, 'b-', linewidth=2, label='Training Loss', alpha=0.8)
+    if val_scores:
+        ax.plot(rounds, val_scores, 'r-', linewidth=2, label='Validation Loss', alpha=0.8)
+    
+    # Find best validation point
+    if val_scores:
+        best_round = np.argmin(val_scores) + 1
+        best_score = min(val_scores)
+        ax.axvline(x=best_round, color='green', linestyle='--', alpha=0.7, 
+                   label=f'Best Val (round {best_round})')
+        ax.scatter([best_round], [best_score], color='green', s=100, zorder=5, marker='*')
+    
+    # Customize
+    ax.set_xlabel('Boosting Round', fontsize=11)
+    ax.set_ylabel(f'Loss ({metric_name})', fontsize=11)
+    ax.set_title('Training and Validation Learning Curves', fontsize=12, pad=10)
+    ax.legend(loc='upper right', frameon=True, fontsize=9)
+    ax.grid(alpha=0.3, linestyle='--')
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved learning curves to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_shap_summary_plot(
+    model,
+    X: np.ndarray,
+    feature_names: List[str],
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/shap_summary.pdf",
+    max_display: int = 20
+):
+    """
+    Generate SHAP summary plot (beeswarm) showing global feature importance.
+    
+    This is the most important SHAP visualization for papers - it shows:
+    - Feature importance ranking (y-axis)
+    - Impact magnitude (x-axis)  
+    - Feature value coloring (red=high, blue=low)
+    
+    Args:
+        model: Trained XGBoost model (Booster or XGBClassifier)
+        X: Feature matrix (n_samples × n_features)
+        feature_names: List of feature names
+        class_names: Names for each class
+        output_path: Where to save the figure
+        max_display: Maximum features to show
+    
+    Returns:
+        SHAP values object
+    """
+    import shap
+    
+    logging.info("[PLOTS] Generating SHAP summary plot...")
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Create TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    
+    # For multi-class, shap_values is a list of arrays (one per class)
+    # We'll create a summary for each class
+    n_classes = len(shap_values) if isinstance(shap_values, list) else 1
+    
+    logging.info(f"  Computing SHAP values for {X.shape[0]} samples...")
+    logging.info(f"  Number of classes: {n_classes}")
+    
+    # Create multi-panel figure for multi-class
+    if n_classes > 1:
+        fig, axes = plt.subplots(1, n_classes, figsize=(5 * n_classes, 6))
+        
+        for class_idx in range(n_classes):
+            plt.sca(axes[class_idx])
+            shap.summary_plot(
+                shap_values[class_idx],
+                X,
+                feature_names=feature_names,
+                max_display=max_display,
+                show=False,
+                plot_size=None
+            )
+            axes[class_idx].set_title(f'{class_names[class_idx]} Risk', fontsize=11)
+        
+        plt.tight_layout()
+    else:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        shap.summary_plot(
+            shap_values,
+            X,
+            feature_names=feature_names,
+            max_display=max_display,
+            show=False
+        )
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved SHAP summary plot to {output_path}")
+    
+    plt.close(fig)
+    return shap_values
+
+
+def generate_shap_bar_plot(
+    model,
+    X: np.ndarray,
+    feature_names: List[str],
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/shap_importance.pdf",
+    max_display: int = 20
+):
+    """
+    Generate SHAP bar plot showing mean absolute SHAP values.
+    
+    Simpler than summary plot - good for showing pure feature importance
+    without the distribution details.
+    
+    Args:
+        model: Trained XGBoost model
+        X: Feature matrix (n_samples × n_features)
+        feature_names: List of feature names
+        class_names: Names for each class
+        output_path: Where to save the figure
+        max_display: Maximum features to show
+    
+    Returns:
+        Dictionary of mean absolute SHAP values per class
+    """
+    import shap
+    
+    logging.info("[PLOTS] Generating SHAP bar plot...")
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Create TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    
+    n_classes = len(shap_values) if isinstance(shap_values, list) else 1
+    
+    # Calculate mean absolute SHAP values
+    mean_shap = {}
+    for class_idx in range(n_classes):
+        sv = shap_values[class_idx] if isinstance(shap_values, list) else shap_values
+        mean_shap[class_names[class_idx]] = np.abs(sv).mean(axis=0)
+    
+    # Create figure
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Average across all classes for overall importance
+    all_class_mean = np.mean([v for v in mean_shap.values()], axis=0)
+    
+    # Get top features
+    top_indices = np.argsort(all_class_mean)[-max_display:][::-1]
+    top_names = [feature_names[i] for i in top_indices]
+    top_values = all_class_mean[top_indices]
+    
+    # Color by feature type
+    colors = ['#D62728' if not name.startswith('embedding_') else '#1F77B4' 
+              for name in top_names]
+    
+    y_pos = np.arange(len(top_names))
+    ax.barh(y_pos, top_values, color=colors, edgecolor='black', linewidth=0.5, alpha=0.8)
+    
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(top_names, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel('Mean |SHAP Value|', fontsize=11)
+    ax.set_title('Feature Importance (SHAP)', fontsize=12, pad=10)
+    ax.grid(axis='x', alpha=0.3, linestyle='--')
+    
+    # Legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#D62728', edgecolor='black', label='Symbolic Features'),
+        Patch(facecolor='#1F77B4', edgecolor='black', label='BERT Embeddings')
+    ]
+    ax.legend(handles=legend_elements, loc='lower right', fontsize=9)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved SHAP bar plot to {output_path}")
+    
+    # Log top features
+    logging.info("  Top 5 features by SHAP importance:")
+    for name, val in zip(top_names[:5], top_values[:5]):
+        logging.info(f"    {name}: {val:.4f}")
+    
+    plt.close(fig)
+    return mean_shap
+
+
+def generate_shap_waterfall_plot(
+    model,
+    X_single: np.ndarray,
+    feature_names: List[str],
+    class_idx: int = 2,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/shap_waterfall.pdf",
+    max_display: int = 15
+):
+    """
+    Generate SHAP waterfall plot for a single prediction.
+    
+    Shows how each feature contributes to pushing the prediction
+    from the base value (average) to the final output.
+    
+    Args:
+        model: Trained XGBoost model
+        X_single: Single sample feature vector (1 × n_features)
+        feature_names: List of feature names
+        class_idx: Which class to explain (0=Low, 1=Medium, 2=High)
+        class_names: Names for each class
+        output_path: Where to save the figure
+        max_display: Maximum features to show
+    
+    Returns:
+        SHAP Explanation object
+    """
+    import shap
+    
+    logging.info(f"[PLOTS] Generating SHAP waterfall plot for class {class_idx}...")
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Create TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    
+    # Ensure X_single is 2D
+    if X_single.ndim == 1:
+        X_single = X_single.reshape(1, -1)
+    
+    shap_values = explainer.shap_values(X_single)
+    
+    # Get values for specified class
+    sv = shap_values[class_idx][0] if isinstance(shap_values, list) else shap_values[0]
+    base_value = explainer.expected_value[class_idx] if isinstance(explainer.expected_value, list) else explainer.expected_value
+    
+    # Create SHAP Explanation object
+    explanation = shap.Explanation(
+        values=sv,
+        base_values=base_value,
+        data=X_single[0],
+        feature_names=feature_names
+    )
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    shap.plots.waterfall(explanation, max_display=max_display, show=False)
+    
+    plt.title(f'SHAP Explanation for {class_names[class_idx]} Risk Prediction', fontsize=12, pad=20)
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved SHAP waterfall plot to {output_path}")
+    
+    plt.close(fig)
+    return explanation
+
+
+def generate_shap_dependence_plot(
+    model,
+    X: np.ndarray,
+    feature_names: List[str],
+    feature_name: str,
+    interaction_feature: Optional[str] = None,
+    class_idx: int = 2,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/shap_dependence.pdf"
+):
+    """
+    Generate SHAP dependence plot showing feature effect on predictions.
+    
+    Shows the relationship between a feature's value and its SHAP value,
+    optionally colored by an interaction feature.
+    
+    Args:
+        model: Trained XGBoost model
+        X: Feature matrix (n_samples × n_features)
+        feature_names: List of feature names
+        feature_name: Feature to plot on x-axis
+        interaction_feature: Feature to color by (auto-detected if None)
+        class_idx: Which class to explain
+        class_names: Names for each class
+        output_path: Where to save the figure
+    
+    Returns:
+        Matplotlib figure
+    """
+    import shap
+    
+    logging.info(f"[PLOTS] Generating SHAP dependence plot for '{feature_name}'...")
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Find feature index
+    try:
+        feature_idx = feature_names.index(feature_name)
+    except ValueError:
+        logging.error(f"  Feature '{feature_name}' not found in feature_names")
+        return None
+    
+    # Create TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    
+    # Get values for specified class
+    sv = shap_values[class_idx] if isinstance(shap_values, list) else shap_values
+    
+    # Create figure
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    fig, ax = plt.subplots(figsize=(7, 5))
+    
+    # Determine interaction feature
+    if interaction_feature is not None:
+        try:
+            interaction_idx = feature_names.index(interaction_feature)
+        except ValueError:
+            interaction_idx = "auto"
+    else:
+        interaction_idx = "auto"
+    
+    shap.dependence_plot(
+        feature_idx,
+        sv,
+        X,
+        feature_names=feature_names,
+        interaction_index=interaction_idx,
+        ax=ax,
+        show=False
+    )
+    
+    ax.set_title(f'SHAP Dependence: {feature_name} ({class_names[class_idx]} Risk)', fontsize=12, pad=10)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved SHAP dependence plot to {output_path}")
+    
+    plt.close(fig)
+    return fig
+
+
+def generate_shap_force_plot(
+    model,
+    X_single: np.ndarray,
+    feature_names: List[str],
+    class_idx: int = 2,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/shap_force.html"
+):
+    """
+    Generate SHAP force plot (interactive HTML).
+    
+    Shows how features push the prediction from base value to final output.
+    Best viewed in browser - provides interactive tooltips.
+    
+    Args:
+        model: Trained XGBoost model
+        X_single: Single sample feature vector (1 × n_features)
+        feature_names: List of feature names
+        class_idx: Which class to explain
+        class_names: Names for each class
+        output_path: Where to save the HTML file
+    
+    Returns:
+        SHAP force plot object
+    """
+    import shap
+    
+    logging.info(f"[PLOTS] Generating SHAP force plot for class {class_idx}...")
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    # Create TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    
+    # Ensure X_single is 2D
+    if X_single.ndim == 1:
+        X_single = X_single.reshape(1, -1)
+    
+    shap_values = explainer.shap_values(X_single)
+    
+    # Get values for specified class
+    sv = shap_values[class_idx][0] if isinstance(shap_values, list) else shap_values[0]
+    base_value = explainer.expected_value[class_idx] if isinstance(explainer.expected_value, list) else explainer.expected_value
+    
+    # Initialize JS visualization
+    shap.initjs()
+    
+    # Create force plot
+    force_plot = shap.force_plot(
+        base_value,
+        sv,
+        X_single[0],
+        feature_names=feature_names,
+        show=False
+    )
+    
+    # Save as HTML
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    
+    shap.save_html(str(output_path), force_plot)
+    
+    logging.info(f"[PLOTS] Saved SHAP force plot to {output_path}")
+    
+    return force_plot
+
+
+def generate_class_distribution_plot(
+    train_labels: np.ndarray,
+    val_labels: np.ndarray,
+    test_labels: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    output_path: str = "visualizations/class_distribution.pdf"
+):
+    """
+    Generate grouped bar chart showing class distribution across splits.
+    
+    Args:
+        train_labels: Training set labels
+        val_labels: Validation set labels
+        test_labels: Test set labels
+        class_names: Names for each class
+        output_path: Where to save the figure
+    
+    Returns:
+        Matplotlib figure object
+    """
+    logging.info("[PLOTS] Generating class distribution plot...")
+    
+    if SCIENCE_PLOTS_AVAILABLE:
+        plt.style.use(['science', 'ieee'])
+    
+    if class_names is None:
+        class_names = ['Low', 'Medium', 'High']
+    
+    n_classes = len(class_names)
+    
+    # Count samples per class in each split
+    train_counts = [np.sum(train_labels == i) for i in range(n_classes)]
+    val_counts = [np.sum(val_labels == i) for i in range(n_classes)]
+    test_counts = [np.sum(test_labels == i) for i in range(n_classes)]
+    
+    logging.info(f"  Train: {dict(zip(class_names, train_counts))}")
+    logging.info(f"  Val: {dict(zip(class_names, val_counts))}")
+    logging.info(f"  Test: {dict(zip(class_names, test_counts))}")
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 5))
+    
+    x = np.arange(n_classes)
+    width = 0.25
+    
+    bars1 = ax.bar(x - width, train_counts, width, label='Train', color='#0173B2', edgecolor='black')
+    bars2 = ax.bar(x, val_counts, width, label='Validation', color='#DE8F05', edgecolor='black')
+    bars3 = ax.bar(x + width, test_counts, width, label='Test', color='#CC78BC', edgecolor='black')
+    
+    # Add count labels on bars
+    for bars in [bars1, bars2, bars3]:
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(f'{int(height)}',
+                       xy=(bar.get_x() + bar.get_width() / 2, height),
+                       xytext=(0, 3),
+                       textcoords="offset points",
+                       ha='center', va='bottom', fontsize=8)
+    
+    # Customize
+    ax.set_xlabel('Risk Class', fontsize=11)
+    ax.set_ylabel('Number of Samples', fontsize=11)
+    ax.set_title('Class Distribution Across Data Splits', fontsize=12, pad=10)
+    ax.set_xticks(x)
+    ax.set_xticklabels(class_names)
+    ax.legend(loc='upper right', frameon=True, fontsize=9)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.set_axisbelow(True)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    output_path = Path(output_path)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+    fig.savefig(output_path, format='pdf', bbox_inches='tight', dpi=300)
+    
+    svg_path = output_path.with_suffix('.svg')
+    fig.savefig(svg_path, format='svg', bbox_inches='tight')
+    
+    logging.info(f"[PLOTS] Saved class distribution to {output_path}")
+    
+    plt.close(fig)
+    return fig
+

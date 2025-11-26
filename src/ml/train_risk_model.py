@@ -26,18 +26,22 @@ class RiskModelTrainer:
     2. Extract symbolic + neural features
     3. Train XGBoost with research-backed hyperparameters
     4. Save model artifacts
+    5. Generate publication-quality visualizations
     """
     
-    def __init__(self, output_dir: str = None, tracker=None):
+    def __init__(self, output_dir: str = None, viz_dir: str = "visualizations", tracker=None):
         """
         Initialize trainer.
         
         Args:
             output_dir: Directory to save model artifacts
+            viz_dir: Directory to save visualizations
             tracker: Optional ExperimentTracker for MLflow logging
         """
         self.output_dir = output_dir or config.data.output_dir
+        self.viz_dir = viz_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.viz_dir, exist_ok=True)
         
         # Initialize feature extractors
         print("Initializing feature extractors...")
@@ -48,8 +52,9 @@ class RiskModelTrainer:
         self.scaler = None
         self.model = None
         self.feature_names = None
+        self.evals_result = {}  # Store training history for learning curves
         
-        # Experiment tracker
+        # Experiment tracker (optional)
         self.tracker = tracker
     
     def load_data(self, csv_path: str, confidence_threshold: float = 0.75) -> pd.DataFrame:
@@ -372,13 +377,17 @@ class RiskModelTrainer:
         early_stopping = min(50, num_boost_round // 10) if num_boost_round > 10 else None
         verbose_eval = min(50, max(1, num_boost_round // 10))
         
+        # Store eval results for learning curve visualization
+        self.evals_result = {}
+        
         self.model = xgb.train(
             params,
             dtrain,
             num_boost_round=num_boost_round,
             evals=evals,
             early_stopping_rounds=early_stopping,
-            verbose_eval=verbose_eval
+            verbose_eval=verbose_eval,
+            evals_result=self.evals_result  # Capture training history
         )
         
         print("-"*70)
@@ -410,7 +419,7 @@ class RiskModelTrainer:
             y_test: Test labels
         
         Returns:
-            Tuple of (accuracy, y_pred_proba)
+            Tuple of (accuracy, y_pred, y_pred_proba)
         """
         from sklearn.metrics import (
             classification_report, confusion_matrix, accuracy_score,
@@ -460,53 +469,246 @@ class RiskModelTrainer:
                 "recall_medium": recall[1],
                 "recall_high": recall[2]
             })
-            
-            # Generate and log calibration plot
-            from src.visualization.publication_plots import generate_calibration_plot
-            print("  Generating calibration plot...")
-            generate_calibration_plot(
-                y_test, y_pred_proba,
-                class_names=['Low', 'Medium', 'High'],
-                output_path="visualizations/calibration_plot.pdf"
-            )
-            self.tracker.log_artifact("visualizations/calibration_plot.pdf", "visualizations")
-            self.tracker.log_artifact("visualizations/calibration_plot.svg", "visualizations")
-            
             print("  ✓ Evaluation metrics logged")
         
         print("\n✓ Evaluation complete")
         
-        return accuracy, y_pred_proba
+        return accuracy, y_pred, y_pred_proba
     
-    def visualize_embeddings(self, embeddings: np.ndarray, labels: np.ndarray, sample_size: int = 2000):
+    def generate_all_visualizations(
+        self,
+        y_test: np.ndarray,
+        y_pred: np.ndarray,
+        y_pred_proba: np.ndarray,
+        y_train: np.ndarray,
+        y_val: np.ndarray,
+        X_test: np.ndarray = None,
+        embeddings: np.ndarray = None,
+        embedding_labels: np.ndarray = None,
+        sample_size: int = 2000,
+        shap_sample_size: int = 500
+    ):
         """
-        Generate t-SNE visualization of DistilBERT embeddings.
+        Generate all publication-quality visualizations.
         
         Args:
-            embeddings: Embedding vectors (n_samples × 768)
-            labels: Class labels (n_samples)
-            sample_size: Number of samples to visualize
+            y_test: True test labels
+            y_pred: Predicted labels
+            y_pred_proba: Predicted probabilities
+            y_train: Training labels (for class distribution)
+            y_val: Validation labels (for class distribution)
+            X_test: Test feature matrix (for SHAP plots)
+            embeddings: Optional embeddings for t-SNE
+            embedding_labels: Labels for embedding samples
+            sample_size: Number of samples for t-SNE
+            shap_sample_size: Number of samples for SHAP (subsample for speed)
         """
-        if self.tracker is None:
-            print("[SKIP] No tracker available, skipping embedding visualization")
-            return
-        
-        print("\n[VISUALIZATION] Generating t-SNE embedding plot...")
-        
-        from src.visualization.publication_plots import generate_tsne_embeddings
-        
-        generate_tsne_embeddings(
-            embeddings=embeddings,
-            labels=labels,
-            class_names=['Low', 'Medium', 'High'],
-            output_path="visualizations/embeddings_tsne.pdf",
-            sample_size=sample_size
+        from src.visualization.publication_plots import (
+            generate_calibration_plot,
+            generate_confusion_matrix_heatmap,
+            generate_roc_curves,
+            generate_precision_recall_curves,
+            generate_feature_importance_plot,
+            generate_learning_curves,
+            generate_class_distribution_plot,
+            generate_tsne_embeddings,
+            generate_shap_summary_plot,
+            generate_shap_bar_plot,
+            generate_shap_waterfall_plot
         )
         
-        self.tracker.log_artifact("visualizations/embeddings_tsne.pdf", "visualizations")
-        self.tracker.log_artifact("visualizations/embeddings_tsne.svg", "visualizations")
+        print("\n" + "="*70)
+        print("[VISUALIZATIONS] Generating Publication-Quality Figures")
+        print("="*70)
+        print(f"Output directory: {self.viz_dir}/")
         
-        print("  ✓ t-SNE visualization saved and logged")
+        class_names = ['Low', 'Medium', 'High']
+        viz_count = 0
+        total_viz = 11  # Updated total
+        
+        # 1. Confusion Matrix Heatmap
+        print(f"\n[1/{total_viz}] Confusion Matrix...")
+        try:
+            generate_confusion_matrix_heatmap(
+                y_test, y_pred,
+                class_names=class_names,
+                output_path=f"{self.viz_dir}/confusion_matrix.pdf"
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 2. Calibration Plot
+        print(f"\n[2/{total_viz}] Calibration Plot...")
+        try:
+            generate_calibration_plot(
+                y_test, y_pred_proba,
+                class_names=class_names,
+                output_path=f"{self.viz_dir}/calibration_plot.pdf"
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 3. ROC Curves
+        print(f"\n[3/{total_viz}] ROC Curves...")
+        try:
+            generate_roc_curves(
+                y_test, y_pred_proba,
+                class_names=class_names,
+                output_path=f"{self.viz_dir}/roc_curves.pdf"
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 4. Precision-Recall Curves
+        print(f"\n[4/{total_viz}] Precision-Recall Curves...")
+        try:
+            generate_precision_recall_curves(
+                y_test, y_pred_proba,
+                class_names=class_names,
+                output_path=f"{self.viz_dir}/precision_recall_curves.pdf"
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 5. Feature Importance (XGBoost native)
+        print(f"\n[5/{total_viz}] Feature Importance (XGBoost)...")
+        try:
+            generate_feature_importance_plot(
+                self.model,
+                self.feature_names,
+                output_path=f"{self.viz_dir}/feature_importance.pdf",
+                top_k=25
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 6. Learning Curves
+        print(f"\n[6/{total_viz}] Learning Curves...")
+        try:
+            if self.evals_result:
+                generate_learning_curves(
+                    self.evals_result,
+                    output_path=f"{self.viz_dir}/learning_curves.pdf"
+                )
+                viz_count += 1
+            else:
+                print("  ⚠ No training history available")
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 7. Class Distribution
+        print(f"\n[7/{total_viz}] Class Distribution...")
+        try:
+            generate_class_distribution_plot(
+                y_train, y_val, y_test,
+                class_names=class_names,
+                output_path=f"{self.viz_dir}/class_distribution.pdf"
+            )
+            viz_count += 1
+        except Exception as e:
+            print(f"  ⚠ Failed: {e}")
+        
+        # 8. t-SNE Embeddings (optional, can be slow)
+        print(f"\n[8/{total_viz}] t-SNE Embeddings...")
+        if embeddings is not None and embedding_labels is not None:
+            try:
+                generate_tsne_embeddings(
+                    embeddings=embeddings,
+                    labels=embedding_labels,
+                    class_names=class_names,
+                    output_path=f"{self.viz_dir}/embeddings_tsne.pdf",
+                    sample_size=sample_size
+                )
+                viz_count += 1
+            except Exception as e:
+                print(f"  ⚠ Failed: {e}")
+        else:
+            print("  ⚠ No embeddings provided, skipping t-SNE")
+        
+        # === SHAP EXPLAINABILITY PLOTS ===
+        if X_test is not None:
+            # Subsample for SHAP (can be slow on large datasets)
+            if len(X_test) > shap_sample_size:
+                print(f"\n  [SHAP] Subsampling {shap_sample_size} from {len(X_test)} for SHAP analysis...")
+                shap_indices = np.random.choice(len(X_test), shap_sample_size, replace=False)
+                X_shap = X_test[shap_indices]
+                y_shap = y_test[shap_indices]
+            else:
+                X_shap = X_test
+                y_shap = y_test
+            
+            # 9. SHAP Summary Plot (Beeswarm)
+            print(f"\n[9/{total_viz}] SHAP Summary Plot (Beeswarm)...")
+            try:
+                generate_shap_summary_plot(
+                    self.model,
+                    X_shap,
+                    self.feature_names,
+                    class_names=class_names,
+                    output_path=f"{self.viz_dir}/shap_summary.pdf",
+                    max_display=20
+                )
+                viz_count += 1
+            except Exception as e:
+                print(f"  ⚠ Failed: {e}")
+            
+            # 10. SHAP Bar Plot (Mean Importance)
+            print(f"\n[10/{total_viz}] SHAP Feature Importance...")
+            try:
+                generate_shap_bar_plot(
+                    self.model,
+                    X_shap,
+                    self.feature_names,
+                    class_names=class_names,
+                    output_path=f"{self.viz_dir}/shap_importance.pdf",
+                    max_display=25
+                )
+                viz_count += 1
+            except Exception as e:
+                print(f"  ⚠ Failed: {e}")
+            
+            # 11. SHAP Waterfall (Example High-Risk prediction)
+            print(f"\n[11/{total_viz}] SHAP Waterfall (Example Explanation)...")
+            try:
+                # Find a high-risk example
+                high_risk_indices = np.where(y_shap == 2)[0]
+                if len(high_risk_indices) > 0:
+                    example_idx = high_risk_indices[0]
+                    generate_shap_waterfall_plot(
+                        self.model,
+                        X_shap[example_idx],
+                        self.feature_names,
+                        class_idx=2,  # High risk
+                        class_names=class_names,
+                        output_path=f"{self.viz_dir}/shap_waterfall_high_risk.pdf"
+                    )
+                    viz_count += 1
+                else:
+                    print("  ⚠ No high-risk samples found for waterfall plot")
+            except Exception as e:
+                print(f"  ⚠ Failed: {e}")
+        else:
+            print(f"\n[9-11/{total_viz}] SHAP Plots...")
+            print("  ⚠ No X_test provided, skipping SHAP visualizations")
+        
+        print("\n" + "-"*70)
+        print(f"✓ Generated {viz_count}/{total_viz} visualizations in {self.viz_dir}/")
+        print("-"*70)
+        
+        # List all generated files
+        print("\nGenerated files:")
+        import glob
+        for ext in ['pdf', 'svg', 'html']:
+            files = sorted(glob.glob(f"{self.viz_dir}/*.{ext}"))
+            if files:
+                print(f"  {ext.upper()}:")
+                for f in files:
+                    print(f"    - {f}")
     
     def save_model(self):
         """Save all model artifacts."""
@@ -560,10 +762,21 @@ def main():
         help='Output directory for model artifacts'
     )
     parser.add_argument(
+        '--viz-dir',
+        type=str,
+        default='visualizations',
+        help='Output directory for visualizations'
+    )
+    parser.add_argument(
         '--confidence',
         type=float,
         default=config.data.confidence_threshold,
         help='Minimum risk_confidence threshold'
+    )
+    parser.add_argument(
+        '--skip-tsne',
+        action='store_true',
+        help='Skip t-SNE visualization (can be slow)'
     )
     
     args = parser.parse_args()
@@ -576,7 +789,7 @@ def main():
     
     # Initialize trainer
     print("\n[INIT] Initializing trainer...")
-    trainer = RiskModelTrainer(output_dir=args.output)
+    trainer = RiskModelTrainer(output_dir=args.output, viz_dir=args.viz_dir)
     
     # Load data
     df = trainer.load_data(args.data, confidence_threshold=args.confidence)
@@ -644,13 +857,39 @@ def main():
     trainer.train(X_train, y_train, X_val, y_val)
     
     # Evaluate
-    trainer.evaluate(X_test, y_test)
+    accuracy, y_pred, y_pred_proba = trainer.evaluate(X_test, y_test)
     
-    # Save
+    # Save model artifacts
     trainer.save_model()
+    
+    # Generate all publication-quality visualizations
+    # Combine embeddings for t-SNE (use test set for cleaner visualization)
+    if not args.skip_tsne:
+        embeddings_for_viz = X_test_emb
+        labels_for_viz = y_test
+    else:
+        embeddings_for_viz = None
+        labels_for_viz = None
+    
+    trainer.generate_all_visualizations(
+        y_test=y_test,
+        y_pred=y_pred,
+        y_pred_proba=y_pred_proba,
+        y_train=y_train,
+        y_val=y_val,
+        X_test=X_test,  # Pass full test features for SHAP analysis
+        embeddings=embeddings_for_viz,
+        embedding_labels=labels_for_viz,
+        sample_size=2000,
+        shap_sample_size=500  # Subsample for SHAP speed
+    )
     
     print("\n" + "="*60)
     print("✓ Training complete!")
+    print("="*60)
+    print(f"\nOutputs:")
+    print(f"  Model artifacts: {args.output}/")
+    print(f"  Visualizations:  {args.viz_dir}/")
     print("="*60)
 
 

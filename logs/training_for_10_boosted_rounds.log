@@ -1,0 +1,314 @@
+==========================================
+DistilBERT-XGBoost Risk Model Training
+==========================================
+
+Checking dependencies...
+Starting model training...
+
+
+======================================================================
+SPRINTGUARD ML MODEL TRAINING
+======================================================================
+Architecture: Hybrid DistilBERT-XGBoost
+======================================================================
+
+[INIT] Initializing trainer...
+Initializing feature extractors...
+Using device: cuda
+Loading distilbert-base-uncased...
+✓ GPU detected - skipping quantization (using native CUDA)
+✓ BertEmbedder ready (device=cuda (NVIDIA L4), max_length=None, cache_size=None)
+
+======================================================================
+[STAGE 4] Loading Training Data
+======================================================================
+Data source: data/neodataset_augmented_3class.csv
+Confidence threshold: >0.5
+
+[LOAD] Reading CSV file...
+  ✓ Loaded 12106 stories
+  ✓ Columns: 18
+
+[VALIDATION] Checking required columns...
+  ✓ All required columns present
+
+[FILTER] Applying confidence threshold...
+  Removed 214 low-confidence stories (1.8%)
+  ✓ Retained 11892 high-confidence stories
+
+[TEXT] Creating full_text column...
+  ✓ Created full_text for 11892 stories
+
+[LABELS] Mapping risk labels to integer classes...
+  Mapping: {'Low': 0, 'Medium': 1, 'High': 2}
+  Current risk_label values: ['High', 'Low', 'Medium']
+  ✓ Label mapping successful (no NaN values)
+  ✓ All 3 classes present: [0, 1, 2]
+
+[CLASS DISTRIBUTION]
+  Low (class 0): 7353 (61.8%)
+  Medium (class 1): 345 (2.9%)
+  High (class 2): 4194 (35.3%)
+
+[IMBALANCE] Class imbalance ratio: 21.31:1
+  ⚠ Warning: Significant class imbalance detected
+    Using class weights for balanced training
+
+✓ Data loading complete: 11892 stories ready for training
+
+======================================================================
+[SPLIT] Creating Train/Val/Test Splits
+======================================================================
+Strategy: Stratified by project (prevents data leakage)
+Split ratio: 60% train, 20% val, 20% test
+
+[SPLIT 1/2] Creating train and temp sets...
+  Train: 7135 stories
+  Temp (val+test): 4757 stories
+
+[SPLIT 2/2] Splitting temp into val and test...
+  Val:  2378 stories
+  Test: 2379 stories
+
+[SUMMARY] Final split sizes:
+  Train: 7135 (60.0%)
+  Val:   2378 (20.0%)
+  Test:  2379 (20.0%)
+  Total: 11892
+
+[VALIDATION] Verifying stratification...
+  Train class distribution:
+    Low: 61.7%
+    Medium: 2.8%
+    High: 35.5%
+  Val class distribution:
+    Low: 62.5%
+    Medium: 2.9%
+    High: 34.6%
+  Test class distribution:
+    Low: 61.6%
+    Medium: 3.3%
+    High: 35.1%
+  ✓ Stratification successful
+
+======================================================================
+[FEATURES] Extracting Hybrid Features
+======================================================================
+Processing 7135 stories...
+
+[1/2] Extracting symbolic features...
+  Features: readability, text stats, risk keywords, linguistic patterns
+  ✓ Shape: (7135, 15)
+  ✓ Time: 428.7s (60.1ms per story)
+
+[2/2] Extracting DistilBERT embeddings...
+  Model: distilbert-base-uncased (quantized)
+  This may take several minutes...
+  ✓ Shape: (7135, 768)
+  ✓ Time: 24.6s (3.5ms per story)
+  ✓ Cache info: CacheInfo(hits=0, misses=0, maxsize=5000, currsize=0)
+
+[TIMING] Feature extraction:
+  Symbolic: 428.7s (94.6%)
+  BERT:     24.6s (5.4%)
+  Total:    453.4s
+
+======================================================================
+[FEATURES] Extracting Hybrid Features
+======================================================================
+Processing 2378 stories...
+
+[1/2] Extracting symbolic features...
+  Features: readability, text stats, risk keywords, linguistic patterns
+  ✓ Shape: (2378, 15)
+  ✓ Time: 137.1s (57.6ms per story)
+
+[2/2] Extracting DistilBERT embeddings...
+  Model: distilbert-base-uncased (quantized)
+  This may take several minutes...
+  ✓ Shape: (2378, 768)
+  ✓ Time: 8.0s (3.4ms per story)
+  ✓ Cache info: CacheInfo(hits=0, misses=0, maxsize=5000, currsize=0)
+
+[TIMING] Feature extraction:
+  Symbolic: 137.1s (94.5%)
+  BERT:     8.0s (5.5%)
+  Total:    145.1s
+
+======================================================================
+[FEATURES] Extracting Hybrid Features
+======================================================================
+Processing 2379 stories...
+
+[1/2] Extracting symbolic features...
+  Features: readability, text stats, risk keywords, linguistic patterns
+  ✓ Shape: (2379, 15)
+  ✓ Time: 136.1s (57.2ms per story)
+
+[2/2] Extracting DistilBERT embeddings...
+  Model: distilbert-base-uncased (quantized)
+  This may take several minutes...
+  ✓ Shape: (2379, 768)
+  ✓ Time: 7.9s (3.3ms per story)
+  ✓ Cache info: CacheInfo(hits=0, misses=0, maxsize=5000, currsize=0)
+
+[TIMING] Feature extraction:
+  Symbolic: 136.1s (94.5%)
+  BERT:     7.9s (5.5%)
+  Total:    144.0s
+
+[FUSION] Combining and scaling features...
+  Fitting StandardScaler on symbolic features...
+    ✓ Scaler fitted (mean: [33.54509016 12.94377797  0.54900993], std: [36.01895155  3.82139152  0.11648226]...)
+  Concatenating symbolic + embedding features...
+    ✓ Combined shape: (7135, 783)
+  Generating feature names...
+    ✓ Total features: 783
+      - Symbolic: 15
+      - Embeddings: 768
+  ✓ Feature preparation complete
+
+[FUSION] Combining and scaling features...
+  Applying pre-fitted scaler...
+  Concatenating symbolic + embedding features...
+    ✓ Combined shape: (2378, 783)
+  ✓ Feature preparation complete
+
+[FUSION] Combining and scaling features...
+  Applying pre-fitted scaler...
+  Concatenating symbolic + embedding features...
+    ✓ Combined shape: (2379, 783)
+  ✓ Feature preparation complete
+
+======================================================================
+[TRAINING] XGBoost Model Training
+======================================================================
+
+[DATA] Training set:
+  X_train shape: (7135, 783)
+  y_train shape: (7135,)
+    Class 0 (Low): 4401 (61.7%)
+    Class 1 (Medium): 198 (2.8%)
+    Class 2 (High): 2536 (35.5%)
+
+[DATA] Validation set:
+  X_val shape: (2378, 783)
+  y_val shape: (2378,)
+    Class 0 (Low): 1487 (62.5%)
+    Class 1 (Medium): 68 (2.9%)
+    Class 2 (High): 823 (34.6%)
+
+[HYPERPARAMETERS]
+  objective: multi:softprob
+  num_class: 3
+  tree_method: hist
+  max_depth: 5
+  min_child_weight: 7
+  max_bin: 64
+  colsample_bytree: 0.4
+  colsample_bynode: 0.6
+  subsample: 0.7
+  reg_alpha: 0.5
+  eta: 0.05
+  eval_metric: mlogloss
+  seed: 42
+
+[WEIGHTS] Computing sample weights for class balance...
+  ✓ Sample weights computed
+    Min weight: 0.540
+    Max weight: 12.012
+    Mean weight: 1.000
+
+[WEIGHTS] Setting feature importance weights...
+  Symbolic features: 2.0x weight (higher importance)
+  Embedding features: 1.0x weight (baseline)
+
+[DMATRIX] Creating XGBoost data matrices...
+  ✓ Training DMatrix: 7135 rows × 783 features
+  ✓ Validation DMatrix: 2378 rows × 783 features
+
+[XGBOOST] Starting training...
+  Max rounds: 10
+  Early stopping: 1 rounds
+  Progress logged every 1 rounds
+----------------------------------------------------------------------
+[0]	train-mlogloss:1.04926	val-mlogloss:1.04863
+[1]	train-mlogloss:1.00570	val-mlogloss:1.00542
+[2]	train-mlogloss:0.96585	val-mlogloss:0.96280
+[3]	train-mlogloss:0.92789	val-mlogloss:0.92456
+[4]	train-mlogloss:0.89396	val-mlogloss:0.89134
+[5]	train-mlogloss:0.86013	val-mlogloss:0.85671
+[6]	train-mlogloss:0.82971	val-mlogloss:0.82734
+[7]	train-mlogloss:0.80134	val-mlogloss:0.79882
+[8]	train-mlogloss:0.77385	val-mlogloss:0.77140
+[9]	train-mlogloss:0.74846	val-mlogloss:0.74661
+----------------------------------------------------------------------
+✓ Training complete!
+  Trained for 10 rounds (no early stopping)
+
+======================================================================
+[EVALUATION] Model Performance on Test Set
+======================================================================
+
+  Overall Accuracy: 0.8987
+
+[CLASSIFICATION REPORT]
+              precision    recall  f1-score   support
+
+         Low       0.96      0.90      0.93      1465
+      Medium       0.25      0.67      0.36        79
+        High       0.96      0.92      0.94       835
+
+    accuracy                           0.90      2379
+   macro avg       0.72      0.83      0.75      2379
+weighted avg       0.94      0.90      0.91      2379
+
+
+[CONFUSION MATRIX]
+[[1314  122   29]
+ [  25   53    1]
+ [  27   37  771]]
+
+[MACRO-F1 SCORE]: 0.7450
+
+✓ Evaluation complete
+
+Saving model artifacts to models/...
+  ✓ Saved: models/xgboost_risk_model.json
+  ✓ Saved: models/feature_scaler.pkl
+  ✓ Saved: models/feature_names.json
+  ✓ Saved: models/risk_lexicons.json
+✓ All artifacts saved
+
+============================================================
+✓ Training complete!
+============================================================
+
+==========================================
+✓ Training complete!
+Model artifacts saved to models/
+==========================================
+
+Running tests...
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-9.0.1, pluggy-1.6.0 -- /home/jovyan/SprintGuard/venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/jovyan/SprintGuard
+configfile: pytest.ini
+plugins: timeout-2.4.0, anyio-4.11.0, cov-7.0.0
+collecting ... collected 12 items
+
+tests/test_ml_risk_model.py::TestSymbolicFeatureExtractor::test_basic_extraction PASSED [  8%]
+tests/test_ml_risk_model.py::TestSymbolicFeatureExtractor::test_ambiguity_detection PASSED [ 16%]
+tests/test_ml_risk_model.py::TestSymbolicFeatureExtractor::test_risk_lexicon_detection PASSED [ 25%]
+tests/test_ml_risk_model.py::TestSymbolicFeatureExtractor::test_empty_text PASSED [ 33%]
+tests/test_ml_risk_model.py::TestBertEmbedder::test_embedding_extraction PASSED [ 41%]
+tests/test_ml_risk_model.py::TestBertEmbedder::test_caching PASSED       [ 50%]
+tests/test_ml_risk_model.py::TestBertEmbedder::test_batch_embedding PASSED [ 58%]
+tests/test_ml_risk_model.py::TestCostSensitiveClassifier::test_prediction PASSED [ 66%]
+tests/test_ml_risk_model.py::TestCostSensitiveClassifier::test_cost_matrix PASSED [ 75%]
+tests/test_ml_risk_model.py::TestIntegration::test_end_to_end_latency PASSED [ 83%]
+tests/test_ml_risk_model.py::TestIntegration::test_feature_fusion PASSED [ 91%]
+tests/test_ml_risk_model.py::test_model_artifacts_structure PASSED       [100%]
+
+============================== 12 passed in 8.19s ==============================

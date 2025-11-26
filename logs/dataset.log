@@ -1,0 +1,531 @@
+======================================================================
+NeoDataset Augmentation Pipeline
+Research-Backed Weak Supervision for Risk Labeling
+======================================================================
+This pipeline includes 4 stages:
+  Stage 1: Download & Preprocess NeoDataset
+  Stage 2: Weak Supervision (Snorkel)
+  Stage 3: Noise Filtering (Cleanlab)
+  Stage 4: Label Mapping (Binary → 3-Class)
+======================================================================
+
+[MLFLOW] Initializing experiment tracker...
+2025/11/26 17:08:12 INFO mlflow.tracking.fluent: Experiment with name 'SprintGuard_Augmentation' does not exist. Creating a new experiment.
+2025-11-26 17:08:12,798 - INFO - [TRACKER] Initialized experiment: SprintGuard_Augmentation
+2025-11-26 17:08:12,799 - INFO - [TRACKER] Visualizations will be saved to: visualizations
+2025-11-26 17:08:12,843 - INFO - [TRACKER] Started run: augmentation_1764176892
+2025-11-26 17:08:12,843 - INFO - [TRACKER] Run ID: 34d515a144424eac91e0083c69080ff9
+  ✓ MLflow tracking enabled
+
+[STAGE 1/4] Loading NeoDataset...
+
+======================================================================
+[STAGE 1] Loading NeoDataset from HuggingFace
+======================================================================
+Cache directory: ./data/neodataset
+Dataset: giseldo/neodataset
+
+[DOWNLOAD] Fetching dataset from HuggingFace Hub...
+Downloading readme: 9.46kB [00:00, 38.2MB/s]
+  ✓ Download complete
+
+[CONVERT] Converting to pandas DataFrame...
+  ✓ Converted 20479 stories
+
+[DATASET INFO] Raw dataset statistics:
+  Total stories: 20479
+  Total columns: 6
+  Column names: ['idproject', 'issuekey', 'created', 'title', 'description', 'storypoints']
+  Memory usage: 26.40 MB
+
+[DATASET INFO] Missing values detected:
+    description: 1625 (7.9%)
+    storypoints: 5 (0.0%)
+
+✓ Dataset loaded successfully
+
+======================================================================
+[PREPROCESSING] Cleaning and feature engineering
+======================================================================
+Starting with 20479 stories
+
+[FILTER] Removing stories with missing data...
+  After removing missing storypoints: 20474 stories (5 removed)
+  After removing missing description: 18849 stories (1625 removed)
+  After removing missing title: 18849 stories (0 removed)
+  ✓ Filtered out 1630 invalid stories (8.0%)
+  ✓ 18849 valid stories remaining
+
+[RENAME] Renaming columns...
+  ✓ Renamed 'storypoints' → 'story_points'
+
+[FEATURE] Creating computed columns...
+  ✓ Created 'full_text' (title + description)
+  ✓ Created text statistics (word_count, title_word_count, char_count)
+    - word_count: mean=127.4, median=90
+    - char_count: mean=1047.1, median=687
+  ✓ Detected lists in 12513 stories (66.4%)
+  ✓ Detected code blocks in 5593 stories (29.7%)
+
+[VALIDATION] Validating output schema...
+  ✓ All expected columns present: ['title', 'description', 'story_points', 'full_text', 'word_count', 'char_count', 'has_list', 'list_item_count', 'has_code_block']
+
+✓ Preprocessing complete: 18849 stories ready for labeling
+✓ Output shape: (18849, 13)
+✓ Stage 1 complete in 1.3s
+2025-11-26 17:08:14,115 - INFO - [TRACKER] Recorded raw count: 18849
+2025-11-26 17:08:14,116 - INFO - [TRACKER] Logged 2 metrics for stage 'stage1_preprocess'
+2025-11-26 17:08:14,116 - INFO -   stage1_preprocess/num_stories: 18849
+2025-11-26 17:08:14,116 - INFO -   stage1_preprocess/duration_seconds: 1.2681448459625244
+
+[VALIDATION] Stage 1 → Stage 2 compatibility check...
+  ✓ Required columns present: ['full_text', 'word_count', 'story_points']
+
+[STAGE 2/4] Running Weak Supervision (Snorkel)...
+Applying 18 research-backed labeling functions...
+
+======================================================================
+[STAGE 2] Applying Labeling Functions
+======================================================================
+Number of labeling functions: 18
+Number of stories: 18849
+
+[APPLY LFS] Running labeling functions...
+100%|█████████████████████████████████████████████████████████████████| 18849/18849 [00:03<00:00, 6108.63it/s]
+
+[LABEL MATRIX] Generated label matrix
+  Shape: (18849, 18) (18849 stories × 18 LFs)
+  Total votes: 339282
+
+[VOTE DISTRIBUTION]
+  ABSTAIN: 285926 (84.3%)
+  SAFE:    13820 (4.1%)
+  RISK:    39536 (11.7%)
+
+✓ Labeling functions applied successfully
+
+======================================================================
+[ANALYSIS] Labeling Function Performance
+======================================================================
+
+[LF SUMMARY]
+                                 j Polarity  Coverage  Overlaps  Conflicts
+lf_ambiguity_vague               0      [1]  0.068651  0.067218   0.041806
+lf_ambiguity_loophole            1      [1]  0.113109  0.111783   0.063399
+lf_quantification_uncertainty    2      [1]  0.252958  0.247759   0.142077
+lf_weak_action_verbs             3      [1]  0.233010  0.227227   0.141068
+lf_temporal_ideal                4      [1]  0.027853  0.027641   0.013582
+lf_high_complexity               5      [1]  0.137143  0.133111   0.024086
+lf_low_complexity_safe           6      [0]  0.474455  0.421243   0.402674
+lf_fibonacci_anomaly             7      [1]  0.278052  0.268184   0.046634
+lf_missing_acceptance_criteria   8      [1]  0.605762  0.567351   0.329195
+lf_dependency_link               9      [1]  0.022070  0.021911   0.016712
+lf_very_short_description       10      [1]  0.082392  0.082286   0.060215
+lf_very_long_description        11      [1]  0.160698  0.158947   0.103984
+lf_integration_keywords         12      [1]  0.031779  0.031514   0.020479
+lf_legacy_refactor              13      [1]  0.037190  0.036341   0.023184
+lf_security_keywords            14      [1]  0.027057  0.026739   0.019948
+lf_performance_keywords         15      [1]  0.019789  0.019577   0.011937
+lf_bug_fix                      16      [0]  0.106637  0.102923   0.091092
+lf_documentation_story          17      [0]  0.152104  0.148920   0.140326
+
+[COVERAGE METRICS]
+  Overall Coverage: 98.30%
+  (% of stories labeled by at least one LF)
+  Stories with no labels: 320 (1.7%)
+
+[AGREEMENT METRICS]
+  Average LF votes per story: 2.8
+  Min votes: 0
+  Max votes: 11
+  Stories with conflicting labels: 9618 (51.0%)
+
+✓ LF analysis complete
+
+=== Training Snorkel Label Model ===
+2025-11-26 17:08:17,265 - INFO - Computing O...
+2025-11-26 17:08:17,273 - INFO - Estimating \mu...
+  0%|                                                                              | 0/500 [00:00<?, ?epoch/s]2025-11-26 17:08:18,141 - INFO - [0 epochs]: TRAIN:[loss=0.992]
+  0%|▏                                                                     | 1/500 [00:00<01:00,  8.24epoch/s]2025-11-26 17:08:18,326 - INFO - [50 epochs]: TRAIN:[loss=0.062]
+ 19%|████████████▉                                                       | 95/500 [00:00<00:01, 205.32epoch/s]2025-11-26 17:08:18,531 - INFO - [100 epochs]: TRAIN:[loss=0.041]
+ 28%|██████████████████▍                                                | 138/500 [00:00<00:01, 209.74epoch/s]2025-11-26 17:08:18,736 - INFO - [150 epochs]: TRAIN:[loss=0.039]
+ 36%|████████████████████████▎                                          | 181/500 [00:00<00:01, 212.67epoch/s]2025-11-26 17:08:19,027 - INFO - [200 epochs]: TRAIN:[loss=0.038]
+ 49%|█████████████████████████████████                                  | 247/500 [00:01<00:01, 216.92epoch/s]2025-11-26 17:08:19,232 - INFO - [250 epochs]: TRAIN:[loss=0.038]
+ 58%|██████████████████████████████████████▉                            | 291/500 [00:01<00:00, 218.01epoch/s]2025-11-26 17:08:19,437 - INFO - [300 epochs]: TRAIN:[loss=0.038]
+ 67%|████████████████████████████████████████████▉                      | 335/500 [00:01<00:00, 218.58epoch/s]2025-11-26 17:08:19,727 - INFO - [350 epochs]: TRAIN:[loss=0.038]
+ 76%|██████████████████████████████████████████████████▊                | 379/500 [00:01<00:00, 219.18epoch/s]2025-11-26 17:08:19,932 - INFO - [400 epochs]: TRAIN:[loss=0.038]
+ 89%|███████████████████████████████████████████████████████████▋       | 445/500 [00:02<00:00, 219.28epoch/s]2025-11-26 17:08:20,136 - INFO - [450 epochs]: TRAIN:[loss=0.038]
+100%|███████████████████████████████████████████████████████████████████| 500/500 [00:02<00:00, 207.68epoch/s]
+2025-11-26 17:08:20,428 - INFO - Finished Training
+✓ Label model trained
+
+======================================================================
+[LABELS] Generating Probabilistic Labels
+======================================================================
+
+[PREDICT] Computing hard labels...
+  ✓ Generated 18849 hard labels
+  ⚠ Warning: 320 stories have uncertain labels
+    (-1/ABSTAIN: 320, NaN: 0)
+    These will be marked as SAFE (class 0) with confidence 0.5
+
+[PREDICT] Computing probabilistic labels...
+  ✓ Generated probability distributions
+  Shape: (18849, 2)
+
+[DATAFRAME] Adding label columns...
+  Debug: Unique risk_label_binary values: [0, 1]
+  ✓ Added 5 new columns:
+    - risk_label_binary (0/1)
+    - risk_label (SAFE/RISK)
+    - risk_prob_safe
+    - risk_prob_risk
+    - risk_confidence
+
+[LABEL DISTRIBUTION]
+  SAFE: 10367 (55.0%)
+  RISK: 8482 (45.0%)
+
+[CONFIDENCE STATISTICS]
+  Mean:   0.861
+  Median: 0.893
+  Min:    0.500
+  Max:    1.000
+  High confidence (>0.75): 14886 (79.0%)
+
+[VALIDATION] Validating output schema...
+  ✓ Output validation passed
+
+✓ Label generation complete: 18849 stories labeled
+
+✓ Stage 2 complete in 7.3s
+✓ Saved Snorkel labels to data/neodataset/neodataset_snorkel_labels.csv
+2025-11-26 17:08:21,445 - INFO - [TRACKER] Recorded snorkel count: 18849
+2025-11-26 17:08:21,446 - INFO - [TRACKER] Logged 1 metrics for stage 'stage2_snorkel'
+2025-11-26 17:08:21,446 - INFO -   stage2_snorkel/duration_seconds: 7.32761549949646
+2025-11-26 17:08:21,450 - WARNING - [PLOTS] SciencePlots not available, using default matplotlib style
+
+[TRACKER] Logging Snorkel diagnostics to MLflow...
+2025-11-26 17:08:21,454 - INFO - [TRACKER] Logged 18 metrics for stage 'snorkel'
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_ambiguity_vague: 0.06865085680937981
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_ambiguity_loophole: 0.11310944877712345
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_quantification_uncertainty: 0.25295771658973953
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_weak_action_verbs: 0.23300970873786409
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_temporal_ideal: 0.027852936495304792
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_high_complexity: 0.1371425539816436
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_low_complexity_safe: 0.47445487824287763
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_fibonacci_anomaly: 0.27805188604169984
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_missing_acceptance_criteria: 0.6057615788636002
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_dependency_link: 0.022070136346755795
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_very_short_description: 0.08239163881373017
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_very_long_description: 0.16069818027481564
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_integration_keywords: 0.03177887421083347
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_legacy_refactor: 0.0371903018727784
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_security_keywords: 0.027057138309724654
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_performance_keywords: 0.019788848214759402
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_bug_fix: 0.10663695686773834
+2025-11-26 17:08:21,454 - INFO -   snorkel/lf_coverage/lf_documentation_story: 0.15210355987055016
+2025-11-26 17:08:21,458 - INFO - [TRACKER] Logged 6 metrics for stage 'snorkel'
+2025-11-26 17:08:21,458 - INFO -   snorkel/overall_coverage: 0.9830229720409571
+2025-11-26 17:08:21,458 - INFO -   snorkel/avg_votes_per_story: 2.8307071993209187
+2025-11-26 17:08:21,459 - INFO -   snorkel/num_conflicts: 9618
+2025-11-26 17:08:21,459 - INFO -   snorkel/pct_conflicts: 51.02657965939837
+2025-11-26 17:08:21,459 - INFO -   snorkel/num_lfs: 18
+2025-11-26 17:08:21,459 - INFO -   snorkel/num_stories: 18849
+2025-11-26 17:08:21,461 - INFO - [TRACKER] Logged 2 metrics for stage 'snorkel'
+2025-11-26 17:08:21,461 - INFO -   snorkel/label_count/SAFE: 10367
+2025-11-26 17:08:21,461 - INFO -   snorkel/label_pct/SAFE: 55.00026526606187
+2025-11-26 17:08:21,462 - INFO - [TRACKER] Logged 2 metrics for stage 'snorkel'
+2025-11-26 17:08:21,462 - INFO -   snorkel/label_count/RISK: 8482
+2025-11-26 17:08:21,462 - INFO -   snorkel/label_pct/RISK: 44.99973473393814
+2025-11-26 17:08:21,463 - INFO - [TRACKER] Logged 5 metrics for stage 'snorkel'
+2025-11-26 17:08:21,463 - INFO -   snorkel/confidence_mean: 0.8605288840735447
+2025-11-26 17:08:21,463 - INFO -   snorkel/confidence_median: 0.8934476371379668
+2025-11-26 17:08:21,463 - INFO -   snorkel/confidence_min: 0.5
+2025-11-26 17:08:21,464 - INFO -   snorkel/confidence_max: 0.9999999999508122
+2025-11-26 17:08:21,464 - INFO -   snorkel/high_confidence_count: 14886
+  Generating LF correlation heatmap...
+2025-11-26 17:08:21,464 - INFO - [PLOTS] Generating LF correlation heatmap...
+2025-11-26 17:08:21,475 - INFO -   Correlation matrix shape: (18, 18)
+2025-11-26 17:08:21,476 - INFO -   Mean correlation: 0.013
+2025-11-26 17:08:22,017 - INFO - [PLOTS] Saved LF correlation heatmap to visualizations/lf_correlation_heatmap.pdf
+2025-11-26 17:08:22,020 - INFO - [TRACKER] Logged artifact: visualizations/lf_correlation_heatmap.pdf
+2025-11-26 17:08:22,021 - INFO - [TRACKER] Logged artifact: visualizations/lf_correlation_heatmap.svg
+  ✓ Snorkel diagnostics logged to MLflow
+
+[VALIDATION] Stage 2 → Stage 3 compatibility check...
+  ✓ risk_label values valid: ['SAFE' 'RISK']
+  ✓ risk_confidence range: [0.500, 1.000]
+
+[STAGE 3/4] Running Noise Remediation (Cleanlab)...
+
+======================================================================
+[STAGE 3] Training Preliminary Classifier for Label Noise Detection
+======================================================================
+
+[DATA] Preparing data for preliminary model...
+  Total stories: 18849
+  Label distribution:
+    SAFE (0): 10367 (55.0%)
+    RISK (1): 8482 (45.0%)
+
+[VECTORIZE] Creating TF-IDF features...
+  ✓ TF-IDF matrix shape: (18849, 1000)
+  ✓ Vocabulary size: 1000
+  ✓ Sparsity: 94.4%
+
+[TRAIN] Training Logistic Regression classifier...
+  Model: LogisticRegression (max_iter=500)
+
+[CROSS-VAL] Computing 5-fold cross-validated predictions...
+  This may take a few minutes...
+  ✓ Cross-validation complete in 2.8s
+  ✓ Generated predicted probabilities: (18849, 2)
+
+[PREDICTIONS] Probability statistics:
+  P(SAFE) - mean: 0.565, std: 0.343
+  P(RISK) - mean: 0.435, std: 0.343
+
+✓ Preliminary model training complete
+
+======================================================================
+[CLEANLAB] Detecting Label Issues
+======================================================================
+
+[DETECT] Running Confident Learning algorithm...
+  Input: 18849 labels + predicted probabilities
+
+[RESULTS] Label quality assessment:
+  Total stories: 18849
+  Clean labels: 12106 (64.2%)
+  Issues detected: 6743 (35.8%)
+  SAFE label issues: 2800/10367 (27.0%)
+  RISK label issues: 3943/8482 (46.5%)
+
+✓ Label issue detection complete
+
+=== Calculating Label Health Score ===
+ * Overall, about 31% (5,922 of the 18,849) labels in your dataset have potential issues.
+ ** The overall label health score for this dataset is: 0.69.
+Overall Label Health Score: 0.686
+(Range: 0-1, higher is better)
+→ Good label quality
+
+======================================================================
+[FILTER] Removing Noisy Labels
+======================================================================
+
+[PRUNE] Filtering dataset...
+
+[STATISTICS] Filtering results:
+  Original dataset: 18849 stories
+  Issues removed: 6743 stories
+  Clean dataset: 12106 stories
+  Retention rate: 64.2%
+
+[LABEL DISTRIBUTION] Before vs After filtering:
+  SAFE:
+    Before: 10367 (55.0%)
+    After:  7567 (62.5%)
+    Removed: 2800 (27.0% of SAFE labels)
+  RISK:
+    Before: 8482 (45.0%)
+    After:  4539 (37.5%)
+    Removed: 3943 (46.5% of RISK labels)
+
+[VALIDATION] Validating filtered dataset...
+  ✓ All required columns present
+
+✓ Dataset filtering complete
+
+✓ Stage 3 complete in 4.8s
+
+[TRACKER] Logging Cleanlab diagnostics to MLflow...
+2025-11-26 17:08:26,877 - INFO - [TRACKER] Logged 3 metrics for stage 'cleanlab'
+2025-11-26 17:08:26,877 - INFO -   cleanlab/overall_health_score: 0.685818876332962
+2025-11-26 17:08:26,877 - INFO -   cleanlab/num_issues_detected: 6743
+2025-11-26 17:08:26,877 - INFO -   cleanlab/pct_data_pruned: 35.77378110244575
+2025-11-26 17:08:26,878 - INFO - [TRACKER] Logged 2 metrics for stage 'cleanlab'
+2025-11-26 17:08:26,878 - INFO -   cleanlab/issues_SAFE: 2800
+2025-11-26 17:08:26,878 - INFO -   cleanlab/pct_pruned_SAFE: 27.00877785280216
+2025-11-26 17:08:26,879 - INFO - [TRACKER] Logged 2 metrics for stage 'cleanlab'
+2025-11-26 17:08:26,879 - INFO -   cleanlab/issues_RISK: 3943
+2025-11-26 17:08:26,879 - INFO -   cleanlab/pct_pruned_RISK: 46.48667767036076
+2025-11-26 17:08:26,880 - INFO - [TRACKER] Logged 3 metrics for stage 'cleanlab'
+2025-11-26 17:08:26,880 - INFO -   cleanlab/retention_rate: 64.22621889755425
+2025-11-26 17:08:26,880 - INFO -   cleanlab/original_size: 18849
+2025-11-26 17:08:26,880 - INFO -   cleanlab/filtered_size: 12106
+  ✓ Cleanlab diagnostics logged to MLflow
+2025-11-26 17:08:26,881 - INFO - [TRACKER] Recorded cleanlab count: 12106
+2025-11-26 17:08:26,882 - INFO - [TRACKER] Logged 2 metrics for stage 'stage3_cleanlab'
+2025-11-26 17:08:26,882 - INFO -   stage3_cleanlab/duration_seconds: 4.841569423675537
+2025-11-26 17:08:26,882 - INFO -   stage3_cleanlab/health_score: 0.685818876332962
+
+[SAVE] Saving binary-labeled datasets...
+  ✓ Saved to data/neodataset_augmented.csv
+  ✓ Saved high-confidence subset (10583 stories) to data/neodataset_augmented_high_confidence.csv
+
+[STAGE 4/4] Mapping Binary Labels to 3-Class...
+  Calling map_to_3class.py script...
+======================================================================
+Binary to 3-Class Label Mapping
+======================================================================
+Input:  data/neodataset_augmented.csv
+Output: data/neodataset_augmented_3class.csv
+Confidence threshold: 0.99
+
+[LOADING] Reading data/neodataset_augmented.csv...
+  ✓ Loaded 12106 stories
+  ✓ Columns: 18
+
+[VALIDATION] Validating input data schema...
+  ✓ Schema validation passed
+  ✓ Found 12106 stories
+  ✓ risk_label values: ['SAFE' 'RISK']
+  ✓ risk_confidence range: [0.500, 1.000]
+
+[MAPPING] Converting binary labels to 3-class labels...
+  Strategy:
+    - SAFE → Low
+    - RISK (confidence > 0.99) → High
+    - RISK (confidence ≤ 0.99) → Medium
+
+  Labels before mapping:
+    SAFE: 7567 (62.5%)
+    RISK: 4539 (37.5%)
+
+  Labels after mapping:
+    Low: 7567 (62.5%)
+    Medium: 345 (2.8%)
+    High: 4194 (34.6%)
+
+  ✓ Mapping complete
+
+[VALIDATION] Validating output data...
+  ✓ Output validation passed
+  ✓ risk_label values: ['High', 'Low', 'Medium']
+
+[SAVING] Writing to data/neodataset_augmented_3class.csv...
+  ✓ Saved 12106 stories
+  ✓ File size: 26.79 MB
+
+[BONUS] Processing high-confidence subset...
+  Input:  data/neodataset_augmented_high_confidence.csv
+  Output: data/neodataset_augmented_3class_high_confidence.csv
+  ✓ Loaded 10583 high-confidence stories
+
+[VALIDATION] Validating input data schema...
+  ✓ Schema validation passed
+  ✓ Found 10583 stories
+  ✓ risk_label values: ['SAFE' 'RISK']
+  ✓ risk_confidence range: [0.751, 1.000]
+
+[MAPPING] Converting binary labels to 3-class labels...
+  Strategy:
+    - SAFE → Low
+    - RISK (confidence > 0.99) → High
+    - RISK (confidence ≤ 0.99) → Medium
+
+  Labels before mapping:
+    SAFE: 6370 (60.2%)
+    RISK: 4213 (39.8%)
+
+  Labels after mapping:
+    Low: 6370 (60.2%)
+    Medium: 19 (0.2%)
+    High: 4194 (39.6%)
+
+  ✓ Mapping complete
+
+[VALIDATION] Validating output data...
+  ✓ Output validation passed
+  ✓ risk_label values: ['High', 'Low', 'Medium']
+  ✓ Saved to data/neodataset_augmented_3class_high_confidence.csv
+
+======================================================================
+✓ MAPPING COMPLETE
+======================================================================
+Output files ready:
+  - data/neodataset_augmented_3class.csv
+  - data/neodataset_augmented_3class_high_confidence.csv
+
+Next steps:
+  1. Verify the mapped labels look correct
+  2. Train ML model: python src/ml/train_risk_model.py --data data/neodataset_augmented_3class.csv
+
+✓ Stage 4 complete in 1.9s
+
+======================================================================
+AUGMENTATION PIPELINE COMPLETE
+======================================================================
+
+[TIMING]
+  Stage 1 (Download & Preprocess): 1.3s
+  Stage 2 (Weak Supervision):      7.3s
+  Stage 3 (Noise Filtering):       4.8s
+  Stage 4 (Label Mapping):         1.9s
+  Total time:                      16.7s (0.3m)
+
+[STATISTICS]
+  Total stories processed: 18849
+  Stories with clean labels: 12106
+  High-confidence stories: 10583
+  Label health score: 0.686
+
+[BINARY LABELS] Distribution (SAFE/RISK):
+  SAFE: 7567 (62.5%)
+  RISK: 4539 (37.5%)
+
+[3-CLASS LABELS] Distribution (Low/Medium/High):
+  Low: 7567 (62.5%)
+  Medium: 345 (2.8%)
+  High: 4194 (34.6%)
+2025-11-26 17:08:30,017 - INFO - [TRACKER] Recorded final count: 10583
+2025-11-26 17:08:30,018 - INFO - [TRACKER] Logged 6 metrics for stage 'overall'
+2025-11-26 17:08:30,018 - INFO -   overall/total_duration_seconds: 16.72620129585266
+2025-11-26 17:08:30,018 - INFO -   overall/total_duration_minutes: 0.2787700215975443
+2025-11-26 17:08:30,018 - INFO -   overall/stage1_duration: 1.2681448459625244
+2025-11-26 17:08:30,018 - INFO -   overall/stage2_duration: 7.32761549949646
+2025-11-26 17:08:30,018 - INFO -   overall/stage3_duration: 4.841569423675537
+2025-11-26 17:08:30,018 - INFO -   overall/stage4_duration: 1.8582093715667725
+
+[VISUALIZATION] Generating pipeline flow diagram...
+2025-11-26 17:08:30,018 - INFO - [PLOTS] Generating Sankey diagram...
+2025-11-26 17:08:30,021 - INFO -   Raw data: 18849
+2025-11-26 17:08:30,022 - INFO -   After Snorkel: 18849 (lost 0)
+2025-11-26 17:08:30,022 - INFO -   After Cleanlab: 12106 (lost 6743)
+2025-11-26 17:08:30,022 - INFO -   Final training: 10583 (lost 1523)
+2025-11-26 17:08:30,098 - INFO - Chromium init'ed with kwargs {}
+2025-11-26 17:08:30,101 - ERROR - [PLOTS] Failed to save Sankey diagram: 
+
+Kaleido requires Google Chrome to be installed.
+
+Either download and install Chrome yourself following Google's instructions for your operating system,
+or install it from your terminal by running:
+
+    $ plotly_get_chrome
+
+
+2025-11-26 17:08:30,101 - INFO - [PLOTS] Note: Install kaleido for PDF export: pip install kaleido
+  ⚠ Could not generate Sankey diagram: [Errno 2] No such file or directory: 'visualizations/sankey_pipeline_flow.pdf'
+2025-11-26 17:08:30,102 - INFO - [TRACKER] Saved stage counts to visualizations/stage_counts.json
+2025-11-26 17:08:30,103 - INFO - [TRACKER] Ended run: 34d515a144424eac91e0083c69080ff9
+
+[MLFLOW] Experiment tracking complete
+  View results: mlflow ui
+
+[OUTPUT FILES]
+  Binary labels (for API/reference):
+    - data/neodataset_augmented.csv
+    - data/neodataset_augmented_high_confidence.csv
+  3-Class labels (for training):
+    - data/neodataset_augmented_3class.csv
+    - data/neodataset_augmented_3class_high_confidence.csv
+
+✓ Pipeline ready for ML model training!
+
+Next steps:
+  1. Review generated datasets
+  2. (Optional) Run: python scripts/verify_pipeline.py
+  3. Train model: python src/ml/train_risk_model.py --data data/neodataset_augmented_3class.csv
+  4. Start API: python app.py
