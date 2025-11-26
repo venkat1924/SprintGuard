@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.utils import class_weight
 from typing import Tuple, Dict
 
+from src.ml.config import config
 from src.ml.feature_extractors import SymbolicFeatureExtractor
 from src.ml.bert_embedder import BertEmbedder
 
@@ -27,7 +28,7 @@ class RiskModelTrainer:
     4. Save model artifacts
     """
     
-    def __init__(self, output_dir: str = "models", tracker=None):
+    def __init__(self, output_dir: str = None, tracker=None):
         """
         Initialize trainer.
         
@@ -35,13 +36,13 @@ class RiskModelTrainer:
             output_dir: Directory to save model artifacts
             tracker: Optional ExperimentTracker for MLflow logging
         """
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        self.output_dir = output_dir or config.data.output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
         
         # Initialize feature extractors
         print("Initializing feature extractors...")
         self.symbolic_extractor = SymbolicFeatureExtractor()
-        self.bert_embedder = BertEmbedder(quantize=True, cache_size=5000)
+        self.bert_embedder = BertEmbedder()
         
         # Will be set during training
         self.scaler = None
@@ -156,6 +157,12 @@ class RiskModelTrainer:
             print(f"    Using class weights for balanced training")
         else:
             print(f"  ✓ Class distribution is reasonably balanced")
+        
+        # Quick testing: limit samples if configured
+        if config.data.max_samples is not None and len(df) > config.data.max_samples:
+            print(f"\n[SAMPLE] Limiting to {config.data.max_samples} samples for quick testing...")
+            df = df.sample(n=config.data.max_samples, random_state=config.data.random_state)
+            print(f"  ✓ Sampled {len(df)} stories")
         
         print(f"\n✓ Data loading complete: {len(df)} stories ready for training")
         
@@ -276,7 +283,7 @@ class RiskModelTrainer:
         X_val: np.ndarray,
         y_val: np.ndarray,
         params: Dict = None,
-        num_boost_round: int = 500
+        num_boost_round: int = None
     ):
         """
         Train XGBoost model with research-backed hyperparameters.
@@ -286,8 +293,11 @@ class RiskModelTrainer:
             y_train: Training labels (N,)
             X_val: Validation features (M, 783)
             y_val: Validation labels (M,)
-            params: Optional XGBoost parameters (uses defaults if None)
+            params: Optional XGBoost parameters (uses config defaults if None)
+            num_boost_round: Max boosting rounds (uses config default if None)
         """
+        num_boost_round = num_boost_round or config.xgboost.num_boost_round
+        
         print("\n" + "="*70)
         print("[TRAINING] XGBoost Model Training")
         print("="*70)
@@ -308,23 +318,9 @@ class RiskModelTrainer:
             label_name = ['Low', 'Medium', 'High'][cls]
             print(f"    Class {cls} ({label_name}): {count} ({count/len(y_val)*100:.1f}%)")
         
-        # Default parameters (research-backed)
+        # Use config defaults if params not provided
         if params is None:
-            params = {
-                'objective': 'multi:softprob',
-                'num_class': 3,
-                'tree_method': 'hist',
-                'max_bin': 64,
-                'max_depth': 5,
-                'min_child_weight': 7,
-                'colsample_bytree': 0.4,
-                'colsample_bynode': 0.6,
-                'subsample': 0.7,
-                'reg_alpha': 0.5,
-                'eta': 0.05,
-                'eval_metric': 'mlogloss',
-                'seed': 42
-            }
+            params = config.xgboost.to_dict()
         
         print(f"\n[HYPERPARAMETERS]")
         for key, value in params.items():
@@ -554,7 +550,7 @@ def main():
     parser.add_argument(
         '--data',
         type=str,
-        default='data/neodataset_augmented_3class_high_confidence.csv',
+        default=config.data.train_data_path,
         help='Path to augmented dataset CSV'
     )
     parser.add_argument(
@@ -566,7 +562,7 @@ def main():
     parser.add_argument(
         '--confidence',
         type=float,
-        default=0.75,
+        default=config.data.confidence_threshold,
         help='Minimum risk_confidence threshold'
     )
     
@@ -595,9 +591,9 @@ def main():
     print("\n[SPLIT 1/2] Creating train and temp sets...")
     train_df, temp_df = train_test_split(
         df,
-        test_size=0.4,
+        test_size=config.data.test_size,
         stratify=df['idproject'],
-        random_state=42
+        random_state=config.data.random_state
     )
     print(f"  Train: {len(train_df)} stories")
     print(f"  Temp (val+test): {len(temp_df)} stories")
@@ -605,9 +601,9 @@ def main():
     print("\n[SPLIT 2/2] Splitting temp into val and test...")
     val_df, test_df = train_test_split(
         temp_df,
-        test_size=0.5,
+        test_size=config.data.val_test_split,
         stratify=temp_df['idproject'],
-        random_state=42
+        random_state=config.data.random_state
     )
     print(f"  Val:  {len(val_df)} stories")
     print(f"  Test: {len(test_df)} stories")

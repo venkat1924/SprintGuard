@@ -8,6 +8,8 @@ import spacy
 from typing import Dict, List
 import numpy as np
 
+from src.ml.config import config
+
 
 class SymbolicFeatureExtractor:
     """
@@ -21,39 +23,21 @@ class SymbolicFeatureExtractor:
     Output: 15-dimensional feature vector
     """
     
-    # Risk lexicons based on SE research
-    SATD_KEYWORDS = [
-        "hack", "fixme", "todo", "workaround", "temporary",
-        "ugly", "hardcoded", "quick fix", "spaghetti"
-    ]
+    # Risk lexicons - loaded from config (class-level for backward compatibility)
+    SATD_KEYWORDS = config.features.satd_keywords
+    SECURITY_KEYWORDS = config.features.security_keywords
+    COMPLEXITY_KEYWORDS = config.features.complexity_keywords
+    WEAK_MODALS = config.features.weak_modals
+    VAGUE_QUANTIFIERS = config.features.vague_quantifiers
     
-    SECURITY_KEYWORDS = [
-        "auth", "token", "jwt", "encrypt", "pii", "gdpr",
-        "role", "permission", "injection", "xss", "secret",
-        "oauth", "credential", "certificate"
-    ]
-    
-    COMPLEXITY_KEYWORDS = [
-        "legacy", "mainframe", "wrapper", "migration", "api",
-        "synchronization", "handshake", "middleware", "integration",
-        "refactor", "database"
-    ]
-    
-    WEAK_MODALS = ["might", "could", "should", "may", "ought"]
-    
-    VAGUE_QUANTIFIERS = [
-        "fast", "easy", "robust", "user-friendly", "seamless",
-        "efficient", "many", "few", "several", "tbd", "appropriate",
-        "suitable", "good", "better", "nice"
-    ]
-    
-    def __init__(self, spacy_model: str = "en_core_web_sm"):
+    def __init__(self, spacy_model: str = None):
         """
         Initialize feature extractor.
         
         Args:
             spacy_model: Name of spaCy model to load
         """
+        spacy_model = spacy_model or config.features.spacy_model
         try:
             self.nlp = spacy.load(spacy_model)
         except OSError:

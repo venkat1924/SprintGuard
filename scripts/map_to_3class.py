@@ -13,6 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, '.')
 
+from src.ml.config import config
+
 
 def validate_input_data(df):
     """
@@ -166,8 +168,8 @@ def main():
     parser.add_argument(
         '--confidence-threshold',
         type=float,
-        default=0.85,
-        help='Confidence threshold for High vs Medium RISK (default: 0.85)'
+        default=config.data.risk_class_threshold,
+        help=f'Confidence threshold for High vs Medium RISK (default: {config.data.risk_class_threshold})'
     )
     
     args = parser.parse_args()

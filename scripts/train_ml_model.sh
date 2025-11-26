@@ -16,6 +16,9 @@ cd "$PROJECT_ROOT"
 # Set PYTHONPATH so 'src' module can be found
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
+# Disable Python output buffering (needed for tmux/piped output)
+export PYTHONUNBUFFERED=1
+
 # Step 1: Check if augmented dataset exists
 if [ ! -f "data/neodataset_augmented_3class_high_confidence.csv" ]; then
     echo "⚠ Augmented dataset not found. Running augmentation pipeline..."
