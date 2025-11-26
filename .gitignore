@@ -33,6 +33,13 @@ Thumbs.db
 # Project specific
 data/sprintguard.db
 
+# Large data files (contain secrets from dataset)
+data/*.csv
+data/neodataset/*.csv
+
+# Logs
+logs/
+
 # MLflow
 mlruns/
 
