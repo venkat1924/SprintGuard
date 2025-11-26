@@ -2,10 +2,9 @@
 # Install with: pip install -r requirements-dev.txt
 
 # Testing
-pytest==7.4.3
-pytest-cov==4.1.0
+pytest
+pytest-cov
 
 # Code quality
-black==23.12.0
-flake8==6.1.0
-
+black
+flake8

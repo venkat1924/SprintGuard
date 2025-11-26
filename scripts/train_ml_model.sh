@@ -1,13 +1,23 @@
 #!/bin/bash
 # Quick training script for DistilBERT-XGBoost Risk Model
 
+set -e  # Exit on any error
+
 echo "=========================================="
 echo "DistilBERT-XGBoost Risk Model Training"
 echo "=========================================="
 echo ""
 
+# Get project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
+# Set PYTHONPATH so 'src' module can be found
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+
 # Step 1: Check if augmented dataset exists
-if [ ! -f "data/neodataset_augmented_high_confidence.csv" ]; then
+if [ ! -f "data/neodataset_augmented_3class_high_confidence.csv" ]; then
     echo "⚠ Augmented dataset not found. Running augmentation pipeline..."
     python scripts/augment_neodataset.py
     echo ""
@@ -27,14 +37,13 @@ echo "Starting model training..."
 echo ""
 python src/ml/train_risk_model.py
 
-# Step 4: Run tests
-echo ""
-echo "Running tests..."
-pytest tests/test_ml_risk_model.py -v
-
 echo ""
 echo "=========================================="
 echo "✓ Training complete!"
 echo "Model artifacts saved to models/"
 echo "=========================================="
 
+# Step 4: Run tests (optional, only if training succeeded)
+echo ""
+echo "Running tests..."
+pytest tests/test_ml_risk_model.py -v

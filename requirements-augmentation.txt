@@ -3,15 +3,14 @@
 # Install with: pip install -r requirements-augmentation.txt
 
 # Weak supervision and data quality
-snorkel==0.9.9
-cleanlab==2.6.0
+snorkel
+cleanlab
 
 # Data processing
-datasets==4.4.1  # Updated for pyarrow compatibility
-pandas==2.0.3
-numpy==1.24.3
+datasets
+pandas
+numpy
 
 # ML utilities
-scikit-learn==1.3.0
-nltk==3.8.1
-
+scikit-learn
+nltk

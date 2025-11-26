@@ -554,7 +554,7 @@ def main():
     parser.add_argument(
         '--data',
         type=str,
-        default='data/neodataset_augmented_high_confidence.csv',
+        default='data/neodataset_augmented_3class_high_confidence.csv',
         help='Path to augmented dataset CSV'
     )
     parser.add_argument(

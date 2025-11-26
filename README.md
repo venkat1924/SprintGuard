@@ -59,10 +59,16 @@ This creates:
 After augmentation, train the DistilBERT-XGBoost risk model:
 
 ```bash
-python src/ml/train_risk_model.py
+./scripts/train_ml_model.sh
 ```
 
-This creates model artifacts in `models/` directory.
+This script will:
+- Check for and create augmented dataset if needed
+- Download spaCy model if missing
+- Train the model with proper PYTHONPATH
+- Run validation tests
+
+Model artifacts are saved to the `models/` directory.
 
 ### Start the Application
 
@@ -131,6 +137,7 @@ SprintGuard/
 │   └── utils/                      # Utilities
 ├── scripts/
 │   ├── augment_neodataset.py       # Main augmentation script
+│   ├── train_ml_model.sh           # Model training script
 │   └── explore_neodataset.py       # Data exploration tool
 ├── tests/                          # Unit tests
 ├── docs/                           # Documentation
@@ -156,12 +163,15 @@ python scripts/augment_neodataset.py
 Edit `config.py` and change `PORT = 5001` to another value.
 
 ### ModuleNotFoundError
-Ensure virtual environment is activated and dependencies are installed:
+Use the training script which handles PYTHONPATH automatically:
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-augmentation.txt
-pip install -r requirements-ml.txt
+./scripts/train_ml_model.sh
+```
+
+Or if running Python directly, set PYTHONPATH first:
+```bash
+export PYTHONPATH="$(pwd):$PYTHONPATH"
+python src/ml/train_risk_model.py
 ```
 
 ### spaCy model not found
