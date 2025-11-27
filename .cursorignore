@@ -2,7 +2,7 @@
 # Files and directories to exclude from AI context
 
 # LLM context artifacts (keep but don't index)
-Context_and_info/Text_files/
+# Context_and_info/Text_files/
 
 # Virtual environment
 venv/
